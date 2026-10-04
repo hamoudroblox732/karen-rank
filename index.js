@@ -870,15 +870,13 @@ client.on(
           .setCustomId(
             `result_modal_${channelId}`
           )
-          .setTitle(
-            "إرسال نتيجة المباراة"
-          );
+          .setTitle("إرسال النتيجة");
 
         const scoreInput =
           new TextInputBuilder()
             .setCustomId("score")
-            .setLabel("النتيجة")
-            .setPlaceholder("مثال: 5-2")
+            .setLabel("اكتب النتيجة")
+            .setPlaceholder("5-2")
             .setStyle(
               TextInputStyle.Short
             )

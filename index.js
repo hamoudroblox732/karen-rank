@@ -748,25 +748,7 @@ client.on("interactionCreate", async interaction => {
         )
       );
 
-      try {
-        await interaction.showModal(modal);
-      } catch (error) {
-        console.error(
-          "GAME MODAL ERROR:",
-          error
-        );
-
-        if (
-          !interaction.replied &&
-          !interaction.deferred
-        ) {
-          await interaction.reply({
-            content:
-              "❌ تعذر فتح نافذة دخول القيم.",
-            ephemeral: true
-          });
-        }
-      }
+      await interaction.showModal(modal);
 
       return;
     }
@@ -873,13 +855,15 @@ client.on("interactionCreate", async interaction => {
         .setCustomId(
           `result_modal_${channelId}`
         )
-        .setTitle("إرسال النتيجة");
+        .setTitle("إرسال نتيجة المباراة");
 
       const scoreInput =
         new TextInputBuilder()
           .setCustomId("score")
           .setLabel("Player 1 Score - Player 2 Score")
-          .setPlaceholder("مثال: 5-2")
+          .setPlaceholder(
+            "مثال: 5-2"
+          )
           .setStyle(
             TextInputStyle.Short
           )
@@ -893,25 +877,7 @@ client.on("interactionCreate", async interaction => {
         )
       );
 
-      try {
-        await interaction.showModal(modal);
-      } catch (error) {
-        console.error(
-          "RESULT MODAL ERROR:",
-          error
-        );
-
-        if (
-          !interaction.replied &&
-          !interaction.deferred
-        ) {
-          await interaction.reply({
-            content:
-              "❌ تعذر فتح نافذة إرسال النتيجة.",
-            ephemeral: true
-          });
-        }
-      }
+      await interaction.showModal(modal);
 
       return;
     }
@@ -999,17 +965,17 @@ client.on("interactionCreate", async interaction => {
           score.player2Score
         );
 
-        if (!recorded) {
+        if (recorded) {
+          await interaction.editReply({
+            content:
+              "✅ تم تسجيل النتيجة وتحديث الـLeaderboard."
+          });
+        } else {
           match.resultSubmitted = false;
 
           await interaction.editReply({
             content:
               "❌ لم يتم تسجيل النتيجة."
-          });
-        } else {
-          await interaction.editReply({
-            content:
-              "✅ تم تسجيل النتيجة وتحديث الـLeaderboard."
           });
         }
       } catch (error) {
@@ -1127,9 +1093,7 @@ client.on("interactionCreate", async interaction => {
       }
 
       if (
-        closingMatches.has(
-          channelId
-        )
+        closingMatches.has(channelId)
       ) {
         return interaction.reply({
           content:
@@ -1138,15 +1102,10 @@ client.on("interactionCreate", async interaction => {
         });
       }
 
-      closingMatches.add(
-        channelId
-      );
+      closingMatches.add(channelId);
 
-      const player1 =
-        match.player1;
-
-      const player2 =
-        match.player2;
+      const player1 = match.player1;
+      const player2 = match.player2;
 
       let seconds = 10;
 
@@ -1162,57 +1121,46 @@ client.on("interactionCreate", async interaction => {
         ]
       });
 
-      const timer =
-        setInterval(
-          async () => {
-            seconds--;
+      const timer = setInterval(
+        async () => {
+          seconds--;
 
-            if (seconds <= 0) {
-              clearInterval(timer);
+          if (seconds <= 0) {
+            clearInterval(timer);
 
-              matches.delete(
-                channelId
-              );
+            matches.delete(channelId);
+            closingMatches.delete(channelId);
 
-              closingMatches.delete(
-                channelId
-              );
-
-              removeFromQueue(
-                player1
-              );
-
-              removeFromQueue(
-                player2
-              );
-
-              try {
-                await interaction.channel.delete(
-                  "Time Bomb match closed"
-                );
-              } catch {}
-
-              return;
-            }
+            removeFromQueue(player1);
+            removeFromQueue(player2);
 
             try {
-              await interaction.editReply({
-                embeds: [
-                  new EmbedBuilder()
-                    .setTitle(
-                      "🔒 MATCH CLOSING"
-                    )
-                    .setDescription(
-                      `سيتم إغلاق الروم خلال **${seconds} ثواني**.`
-                    )
-                ]
-              });
-            } catch {
-              clearInterval(timer);
-            }
-          },
-          1000
-        );
+              await interaction.channel.delete(
+                "Time Bomb match closed"
+              );
+            } catch {}
+
+            return;
+          }
+
+          try {
+            await interaction.editReply({
+              embeds: [
+                new EmbedBuilder()
+                  .setTitle(
+                    "🔒 MATCH CLOSING"
+                  )
+                  .setDescription(
+                    `سيتم إغلاق الروم خلال **${seconds} ثواني**.`
+                  )
+              ]
+            });
+          } catch {
+            clearInterval(timer);
+          }
+        },
+        1000
+      );
 
       return;
     }

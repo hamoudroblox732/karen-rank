@@ -91,7 +91,7 @@ function matchControls(channelId) {
   ];
 }
 
-function removePlayerFromQueue(userId) {
+function removeFromQueue(userId) {
   let index;
 
   while ((index = queue.indexOf(userId)) !== -1) {
@@ -99,7 +99,7 @@ function removePlayerFromQueue(userId) {
   }
 }
 
-function removePlayerFromMatches(userId) {
+function removeFromMatches(userId) {
   for (const [channelId, match] of matches.entries()) {
     if (
       match.player1 === userId ||
@@ -111,7 +111,7 @@ function removePlayerFromMatches(userId) {
   }
 }
 
-function playerHasActiveMatch(guild, userId) {
+function isInActiveMatch(guild, userId) {
   for (const [channelId, match] of matches.entries()) {
     if (
       match.player1 !== userId &&
@@ -134,13 +134,25 @@ function playerHasActiveMatch(guild, userId) {
 }
 
 async function createMatch(guild, player1, player2) {
-  const permissionOverwrites = [
+  const overwrites = [
     {
       id: guild.roles.everyone.id,
       deny: [
         PermissionFlagsBits.ViewChannel
       ]
     },
+
+    {
+      id: client.user.id,
+      allow: [
+        PermissionFlagsBits.ViewChannel,
+        PermissionFlagsBits.SendMessages,
+        PermissionFlagsBits.ReadMessageHistory,
+        PermissionFlagsBits.EmbedLinks,
+        PermissionFlagsBits.ManageChannels
+      ]
+    },
+
     {
       id: player1.id,
       allow: [
@@ -149,6 +161,7 @@ async function createMatch(guild, player1, player2) {
         PermissionFlagsBits.ReadMessageHistory
       ]
     },
+
     {
       id: player2.id,
       allow: [
@@ -160,7 +173,7 @@ async function createMatch(guild, player1, player2) {
   ];
 
   if (DEVELOPMENT_ROLE_ID) {
-    permissionOverwrites.push({
+    overwrites.push({
       id: DEVELOPMENT_ROLE_ID,
       allow: [
         PermissionFlagsBits.ViewChannel,
@@ -170,22 +183,22 @@ async function createMatch(guild, player1, player2) {
     });
   }
 
-  const safeName1 =
+  const name1 =
     player1.username
       .toLowerCase()
       .replace(/[^a-z0-9-]/g, "")
-      .slice(0, 30) || "player1";
+      .slice(0, 25) || "player1";
 
-  const safeName2 =
+  const name2 =
     player2.username
       .toLowerCase()
       .replace(/[^a-z0-9-]/g, "")
-      .slice(0, 30) || "player2";
+      .slice(0, 25) || "player2";
 
   const channel = await guild.channels.create({
-    name: `match-${safeName1}-${safeName2}`,
+    name: `match-${name1}-${name2}`,
     type: ChannelType.GuildText,
-    permissionOverwrites
+    permissionOverwrites: overwrites
   });
 
   matches.set(channel.id, {
@@ -205,7 +218,7 @@ async function createMatch(guild, player1, player2) {
       text: "Karen Rank • Time Bomb 1v1"
     });
 
-  const controlsEmbed = new EmbedBuilder()
+  const controlEmbed = new EmbedBuilder()
     .setTitle("🎮 MATCH CONTROL")
     .setDescription(
       "استخدم الأزرار بالأسفل للتحكم بالمباراة.\n\n" +
@@ -227,7 +240,7 @@ async function createMatch(guild, player1, player2) {
   });
 
   await channel.send({
-    embeds: [controlsEmbed],
+    embeds: [controlEmbed],
     components: matchControls(channel.id)
   });
 
@@ -239,9 +252,9 @@ client.once("ready", async () => {
 
   try {
     await registerCommands();
-    console.log("Commands registered successfully.");
+    console.log("Commands registered.");
   } catch (error) {
-    console.error("Command registration error:", error);
+    console.error(error);
   }
 });
 
@@ -259,22 +272,20 @@ client.on("interactionCreate", async interaction => {
     }
   }
 
-  if (!interaction.isButton()) {
-    return;
-  }
+  if (!interaction.isButton()) return;
 
   if (interaction.customId === "find") {
     const userId = interaction.user.id;
 
-    if (playerHasActiveMatch(interaction.guild, userId)) {
+    if (isInActiveMatch(interaction.guild, userId)) {
       return interaction.reply({
         content: "❌ أنت داخل مباراة حاليًا.",
         ephemeral: true
       });
     }
 
-    removePlayerFromMatches(userId);
-    removePlayerFromQueue(userId);
+    removeFromMatches(userId);
+    removeFromQueue(userId);
 
     if (queue.length === 0) {
       queue.push(userId);
@@ -290,16 +301,9 @@ client.on("interactionCreate", async interaction => {
     while (queue.length > 0) {
       const candidate = queue.shift();
 
-      if (candidate === userId) {
-        continue;
-      }
+      if (candidate === userId) continue;
 
-      if (
-        !playerHasActiveMatch(
-          interaction.guild,
-          candidate
-        )
-      ) {
+      if (!isInActiveMatch(interaction.guild, candidate)) {
         opponentId = candidate;
         break;
       }
@@ -319,31 +323,30 @@ client.on("interactionCreate", async interaction => {
     });
 
     try {
-      const player1 =
+      const opponent =
         await interaction.guild.members.fetch(opponentId);
 
-      const player2 =
+      const player =
         await interaction.guild.members.fetch(userId);
 
       const channel = await createMatch(
         interaction.guild,
-        player1.user,
-        player2.user
+        opponent.user,
+        player.user
       );
 
       await interaction.editReply({
-        content:
-          `🎮 **MATCH FOUND!**\n` +
-          `تم إنشاء روم المباراة: ${channel}`
+        content: `🎮 **MATCH FOUND!**\n${channel}`
       });
 
     } catch (error) {
-      console.error("Match creation error:", error);
+      console.error("MATCH ERROR:", error);
 
       queue.unshift(opponentId);
 
       await interaction.editReply({
-        content: "❌ صار خطأ في إنشاء روم المباراة."
+        content:
+          "❌ حدث خطأ في إنشاء المباراة. تأكد أن البوت عنده **Manage Channels**."
       });
     }
 
@@ -411,14 +414,14 @@ client.on("interactionCreate", async interaction => {
 
     let seconds = 10;
 
-    const countdownEmbed = new EmbedBuilder()
-      .setTitle("🔒 MATCH CLOSING")
-      .setDescription(
-        `سيتم إغلاق الروم خلال **${seconds} ثواني**.`
-      );
-
     await interaction.reply({
-      embeds: [countdownEmbed]
+      embeds: [
+        new EmbedBuilder()
+          .setTitle("🔒 MATCH CLOSING")
+          .setDescription(
+            `سيتم إغلاق الروم خلال **${seconds} ثواني**.`
+          )
+      ]
     });
 
     const timer = setInterval(async () => {
@@ -430,16 +433,14 @@ client.on("interactionCreate", async interaction => {
         matches.delete(channelId);
         closingMatches.delete(channelId);
 
-        removePlayerFromQueue(player1);
-        removePlayerFromQueue(player2);
+        removeFromQueue(player1);
+        removeFromQueue(player2);
 
         try {
           await interaction.channel.delete(
             "Time Bomb match closed"
           );
-        } catch (error) {
-          console.error(error);
-        }
+        } catch {}
 
         return;
       }
@@ -456,12 +457,6 @@ client.on("interactionCreate", async interaction => {
         });
       } catch {
         clearInterval(timer);
-
-        matches.delete(channelId);
-        closingMatches.delete(channelId);
-
-        removePlayerFromQueue(player1);
-        removePlayerFromQueue(player2);
       }
     }, 1000);
 
@@ -494,8 +489,7 @@ client.on("interactionCreate", async interaction => {
 
     if (!DEVELOPMENT_ROLE_ID) {
       return interaction.reply({
-        content:
-          "❌ DEVELOPMENT_ROLE_ID غير موجود في Render.",
+        content: "❌ DEVELOPMENT_ROLE_ID غير موجود في Render.",
         ephemeral: true
       });
     }
@@ -503,7 +497,6 @@ client.on("interactionCreate", async interaction => {
     await interaction.reply({
       content:
         `<@&${DEVELOPMENT_ROLE_ID}> 🆘 **Admin Assistance Requested**\n\n` +
-        `المباراة تحتاج مساعدة.\n` +
         `Players: <@${match.player1}> vs <@${match.player2}>`,
       allowedMentions: {
         roles: [DEVELOPMENT_ROLE_ID]

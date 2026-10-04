@@ -56,6 +56,11 @@ function saveLeaderboard() {
   );
 }
 
+function isOwner(interaction) {
+  return interaction.guild &&
+    interaction.user.id === interaction.guild.ownerId;
+}
+
 function validRobloxLink(link) {
   try {
     const url = new URL(link);
@@ -101,6 +106,40 @@ function parseScore(input) {
   };
 }
 
+function ensurePlayer(userId) {
+  if (!leaderboard[userId]) {
+    leaderboard[userId] = {
+      points: 0,
+      wins: 0,
+      losses: 0,
+      roundsWon: 0,
+      roundsLost: 0
+    };
+  }
+
+  if (typeof leaderboard[userId].points !== "number") {
+    leaderboard[userId].points = 0;
+  }
+
+  if (typeof leaderboard[userId].wins !== "number") {
+    leaderboard[userId].wins = 0;
+  }
+
+  if (typeof leaderboard[userId].losses !== "number") {
+    leaderboard[userId].losses = 0;
+  }
+
+  if (typeof leaderboard[userId].roundsWon !== "number") {
+    leaderboard[userId].roundsWon = 0;
+  }
+
+  if (typeof leaderboard[userId].roundsLost !== "number") {
+    leaderboard[userId].roundsLost = 0;
+  }
+
+  return leaderboard[userId];
+}
+
 function getLeaderboardSorted() {
   return Object.entries(leaderboard)
     .filter(([key, value]) => {
@@ -118,6 +157,10 @@ function getLeaderboardSorted() {
 
       if (b[1].wins !== a[1].wins) {
         return b[1].wins - a[1].wins;
+      }
+
+      if (b[1].roundsWon !== a[1].roundsWon) {
+        return b[1].roundsWon - a[1].roundsWon;
       }
 
       return a[0].localeCompare(b[0]);
@@ -150,7 +193,9 @@ function createLeaderboardEmbed() {
           `${position} <@${userId}>\n` +
           `> **${data.points}** Points  •  ` +
           `**${data.wins}** Wins  •  ` +
-          `**${data.losses}** Losses`
+          `**${data.losses}** Losses\n` +
+          `> **${data.roundsWon}** Rounds Won  •  ` +
+          `**${data.roundsLost}** Rounds Lost`
         );
       })
       .join("\n\n");
@@ -245,7 +290,8 @@ function createMatchEmbed(match) {
       "📢 تحتاج Admin؟ اضغط **استدعاء Admin**.\n\n" +
       "🏆 بعد انتهاء القيم استخدم:\n" +
       "`/win score:5-1`\n\n" +
-      "⚠️ النتيجة تكون حسب ترتيب اللاعبين فوق."
+      "⚠️ الرقم الأعلى هو الفائز دائمًا.\n" +
+      "⚠️ ترتيب النتيجة يكون Player 1 ثم Player 2."
     )
     .setColor(0x5865f2)
     .setFooter({
@@ -267,9 +313,9 @@ function createResultEmbed(
       "### TIME BOMB 1V1 RESULT\n\n" +
       "━━━━━━━━━━━━━━━━━━━━\n\n" +
       `👤 **${match.player1.name}**\n` +
-      `## ${player1Score}\n\n` +
+      `## ${player1Score} Rounds\n\n` +
       `👤 **${match.player2.name}**\n` +
-      `## ${player2Score}\n\n` +
+      `## ${player2Score} Rounds\n\n` +
       "━━━━━━━━━━━━━━━━━━━━\n\n" +
       `🏆 **Winner**\n<@${winner.id}>\n\n` +
       `🥈 **Opponent**\n<@${loser.id}>\n\n` +
@@ -361,34 +407,27 @@ function recordResult(
   const player1Id = match.player1.id;
   const player2Id = match.player2.id;
 
-  if (!leaderboard[player1Id]) {
-    leaderboard[player1Id] = {
-      points: 0,
-      wins: 0,
-      losses: 0
-    };
-  }
+  const player1 = ensurePlayer(player1Id);
+  const player2 = ensurePlayer(player2Id);
 
-  if (!leaderboard[player2Id]) {
-    leaderboard[player2Id] = {
-      points: 0,
-      wins: 0,
-      losses: 0
-    };
-  }
+  player1.roundsWon += player1Score;
+  player1.roundsLost += player2Score;
+
+  player2.roundsWon += player2Score;
+  player2.roundsLost += player1Score;
 
   if (player1Score > player2Score) {
-    leaderboard[player1Id].points += 3;
-    leaderboard[player1Id].wins += 1;
+    player1.points += 3;
+    player1.wins += 1;
 
-    leaderboard[player2Id].points += 1;
-    leaderboard[player2Id].losses += 1;
+    player2.points += 1;
+    player2.losses += 1;
   } else {
-    leaderboard[player2Id].points += 3;
-    leaderboard[player2Id].wins += 1;
+    player2.points += 3;
+    player2.wins += 1;
 
-    leaderboard[player1Id].points += 1;
-    leaderboard[player1Id].losses += 1;
+    player1.points += 1;
+    player1.losses += 1;
   }
 
   saveLeaderboard();
@@ -425,12 +464,6 @@ async function registerCommands() {
       .setName("setup")
       .setDescription(
         "Create the Karen Rank matchmaking panel"
-      ),
-
-    new SlashCommandBuilder()
-      .setName("leaderboard")
-      .setDescription(
-        "Set this channel as the leaderboard channel"
       ),
 
     new SlashCommandBuilder()
@@ -487,6 +520,16 @@ client.on(
         if (
           interaction.commandName === "setup"
         ) {
+          if (!isOwner(interaction)) {
+            await interaction.reply({
+              content:
+                "❌ هذا الأمر للـOwner فقط.",
+              ephemeral: true
+            });
+
+            return;
+          }
+
           await interaction.reply(
             mainPanel()
           );
@@ -495,9 +538,18 @@ client.on(
         }
 
         if (
-          interaction.commandName === "leaderboard" ||
           interaction.commandName === "lb"
         ) {
+          if (!isOwner(interaction)) {
+            await interaction.reply({
+              content:
+                "❌ هذا الأمر للـOwner فقط.",
+              ephemeral: true
+            });
+
+            return;
+          }
+
           leaderboard._channelId =
             interaction.channel.id;
 

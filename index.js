@@ -703,8 +703,10 @@ client.on(
           "find_1v1"
         ) {
           if (
-            queue.includes(
-              interaction.user.id
+            queue.some(
+              player =>
+                player.id ===
+                interaction.user.id
             )
           ) {
             await interaction.reply({
@@ -716,65 +718,77 @@ client.on(
             return;
           }
 
-          queue.push(
-            interaction.user.id
-          );
+          queue.push({
+            id: interaction.user.id,
+            interaction: interaction
+          });
 
           await interaction.reply({
             content:
-              "✅ دخلت قائمة الانتظار. انتظر خصمك.",
+              "⏳ تبحث عن خصم...",
             ephemeral: true
           });
 
           if (queue.length >= 2) {
-            const player1Id =
+            const player1Queue =
               queue.shift();
 
-            const player2Id =
+            const player2Queue =
               queue.shift();
 
-            const player1 =
-              await interaction.guild.members.fetch(
-                player1Id
-              );
-
-            const player2 =
-              await interaction.guild.members.fetch(
-                player2Id
-              );
-
-            await createMatch(
-              player1,
-              player2
-            );
+            let player1;
+            let player2;
+            let matchChannel;
 
             try {
-              await interaction.followUp({
+              player1 =
+                await interaction.guild.members.fetch(
+                  player1Queue.id
+                );
+
+              player2 =
+                await interaction.guild.members.fetch(
+                  player2Queue.id
+                );
+
+              matchChannel =
+                await createMatch(
+                  player1,
+                  player2
+                );
+            } catch (error) {
+              console.error(
+                "MATCH CREATE ERROR:",
+                error
+              );
+
+              queue.unshift(
+                player2Queue,
+                player1Queue
+              );
+
+              return;
+            }
+
+            try {
+              await player1Queue.interaction.editReply({
                 content:
-                  `🎮 تم إيجاد خصمك: <@${player1Id}>`,
-                ephemeral: true
+                  `🎮 تم إيجاد خصمك!\n\n` +
+                  `👤 الخصم: <@${player2.id}>\n` +
+                  `📁 روم الماتش: <#${matchChannel.id}>`
               });
             } catch {}
 
             try {
-              const player1Interaction =
-                interaction.message;
-
-              if (player1Interaction) {
-                await interaction.followUp({
-                  content:
-                    `🎮 تم إيجاد خصمك: <@${player2Id}>`,
-                  ephemeral: true
-                });
-              }
-            } catch {}
-
-            try {
-              await interaction.editReply({
+              await player2Queue.interaction.editReply({
                 content:
-                  `🎮 تم إيجاد خصمك: <@${player1Id}>`
+                  `🎮 تم إيجاد خصمك!\n\n` +
+                  `👤 الخصم: <@${player1.id}>\n` +
+                  `📁 روم الماتش: <#${matchChannel.id}>`
               });
             } catch {}
+
+            return;
           }
 
           return;
@@ -785,8 +799,10 @@ client.on(
           "leave_queue"
         ) {
           const index =
-            queue.indexOf(
-              interaction.user.id
+            queue.findIndex(
+              player =>
+                player.id ===
+                interaction.user.id
             );
 
           if (index === -1) {

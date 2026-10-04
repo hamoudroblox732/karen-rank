@@ -103,35 +103,65 @@ function parseScore(input) {
 
 function getLeaderboardSorted() {
   return Object.entries(leaderboard)
-    .filter(([key]) => !key.startsWith("_"))
+    .filter(([key, value]) => {
+      return (
+        !key.startsWith("_") &&
+        value &&
+        typeof value === "object" &&
+        typeof value.points === "number"
+      );
+    })
     .sort((a, b) => {
       if (b[1].points !== a[1].points) {
         return b[1].points - a[1].points;
       }
 
-      return b[1].wins - a[1].wins;
+      if (b[1].wins !== a[1].wins) {
+        return b[1].wins - a[1].wins;
+      }
+
+      return a[0].localeCompare(b[0]);
     });
 }
 
-function leaderboardEmbed() {
+function createLeaderboardEmbed() {
   const sorted = getLeaderboardSorted();
 
-  let description = "";
+  let description;
 
   if (sorted.length === 0) {
-    description = "لا توجد نتائج حتى الآن.";
+    description =
+      "## 🏆 No Results Yet\n\n" +
+      "No matches have been completed yet.";
   } else {
     description = sorted
       .slice(0, 25)
       .map(([userId, data], index) => {
-        return `**${index + 1}. <@${userId}>** — ${data.points} Points | ${data.wins} Wins | ${data.losses} Losses`;
+        const position =
+          index === 0
+            ? "🥇"
+            : index === 1
+              ? "🥈"
+              : index === 2
+                ? "🥉"
+                : `**${index + 1}.**`;
+
+        return (
+          `${position} <@${userId}>\n` +
+          `> **${data.points}** Points  •  ` +
+          `**${data.wins}** Wins  •  ` +
+          `**${data.losses}** Losses`
+        );
       })
-      .join("\n");
+      .join("\n\n");
   }
 
   return new EmbedBuilder()
-    .setTitle("🏆 KAREN RANK LEADERBOARD")
-    .setDescription(description)
+    .setTitle("🏆 KAREN RANK")
+    .setDescription(
+      "### TIME BOMB 1V1 LEADERBOARD\n\n" +
+      description
+    )
     .setColor(0x5865f2)
     .setFooter({
       text: "Karen Rank • Time Bomb 1V1"
@@ -139,50 +169,28 @@ function leaderboardEmbed() {
     .setTimestamp();
 }
 
-async function updateLeaderboardMessage() {
-  if (
-    !leaderboard._channelId ||
-    !leaderboard._messageId
-  ) {
-    return;
-  }
-
-  try {
-    const channel = await client.channels.fetch(
-      leaderboard._channelId
-    );
-
-    if (!channel) {
-      return;
-    }
-
-    const message = await channel.messages.fetch(
-      leaderboard._messageId
-    );
-
-    await message.edit({
-      embeds: [leaderboardEmbed()]
-    });
-  } catch {
-    leaderboard._channelId = null;
-    leaderboard._messageId = null;
-    saveLeaderboard();
-  }
-}
-
-function mainPanel() {
-  const embed = new EmbedBuilder()
+function createWaitingEmbed() {
+  return new EmbedBuilder()
     .setTitle("💣 KAREN RANK")
     .setDescription(
-      "## Time Bomb 1V1\n\n" +
-      "اضغط الزر للدخول في قائمة الانتظار.\n\n" +
-      "عند وجود لاعبين سيتم إنشاء روم ماتش خاص لهما."
+      "### TIME BOMB 1V1\n\n" +
+      "━━━━━━━━━━━━━━━━━━━━\n\n" +
+      "🎮 **FIND YOUR OPPONENT**\n\n" +
+      "اضغط على **FIND 1V1** للدخول في قائمة الانتظار.\n\n" +
+      "عند توفر لاعب آخر سيتم إنشاء روم ماتش خاص تلقائيًا.\n\n" +
+      "━━━━━━━━━━━━━━━━━━━━\n\n" +
+      "⚡ **Fast Matchmaking**\n" +
+      "🔒 **Private Match Rooms**\n" +
+      "🏆 **Ranked Results**"
     )
     .setColor(0x5865f2)
     .setFooter({
-      text: "Karen Rank"
-    });
+      text: "Karen Rank • Time Bomb 1V1"
+    })
+    .setTimestamp();
+}
 
+function mainPanel() {
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId("find_1v1")
@@ -196,7 +204,7 @@ function mainPanel() {
   );
 
   return {
-    embeds: [embed],
+    embeds: [createWaitingEmbed()],
     components: [row]
   };
 }
@@ -210,7 +218,7 @@ function matchControls() {
 
     new ButtonBuilder()
       .setCustomId("call_admin")
-      .setLabel("استدعاء Admin")
+      .setLabel("📢 استدعاء Admin")
       .setStyle(ButtonStyle.Secondary),
 
     new ButtonBuilder()
@@ -222,6 +230,58 @@ function matchControls() {
   return {
     components: [row]
   };
+}
+
+function createMatchEmbed(match) {
+  return new EmbedBuilder()
+    .setTitle("💣 TIME BOMB 1V1")
+    .setDescription(
+      "### ⚔️ MATCH ROOM\n\n" +
+      "━━━━━━━━━━━━━━━━━━━━\n\n" +
+      `👤 **Player 1**\n<@${match.player1.id}>\n\n` +
+      `👤 **Player 2**\n<@${match.player2.id}>\n\n` +
+      "━━━━━━━━━━━━━━━━━━━━\n\n" +
+      "🔗 اضغط **دخول القيم** لإرسال رابط السيرفر.\n\n" +
+      "📢 تحتاج Admin؟ اضغط **استدعاء Admin**.\n\n" +
+      "🏆 بعد انتهاء القيم استخدم:\n" +
+      "`/win score:5-1`\n\n" +
+      "⚠️ النتيجة تكون حسب ترتيب اللاعبين فوق."
+    )
+    .setColor(0x5865f2)
+    .setFooter({
+      text: "Karen Rank • Match Room"
+    })
+    .setTimestamp();
+}
+
+function createResultEmbed(
+  match,
+  player1Score,
+  player2Score,
+  winner,
+  loser
+) {
+  return new EmbedBuilder()
+    .setTitle("🏆 MATCH COMPLETED")
+    .setDescription(
+      "### TIME BOMB 1V1 RESULT\n\n" +
+      "━━━━━━━━━━━━━━━━━━━━\n\n" +
+      `👤 **${match.player1.name}**\n` +
+      `## ${player1Score}\n\n` +
+      `👤 **${match.player2.name}**\n` +
+      `## ${player2Score}\n\n` +
+      "━━━━━━━━━━━━━━━━━━━━\n\n" +
+      `🏆 **Winner**\n<@${winner.id}>\n\n` +
+      `🥈 **Opponent**\n<@${loser.id}>\n\n` +
+      "━━━━━━━━━━━━━━━━━━━━\n\n" +
+      `🎯 <@${winner.id}> **+3 Points**\n` +
+      `🎯 <@${loser.id}> **+1 Point**`
+    )
+    .setColor(0x57f287)
+    .setFooter({
+      text: "Karen Rank • Result Recorded"
+    })
+    .setTimestamp();
 }
 
 async function createMatch(player1, player2) {
@@ -270,7 +330,7 @@ async function createMatch(player1, player2) {
     ]
   });
 
-  matches.set(channel.id, {
+  const match = {
     player1: {
       id: player1.id,
       name: player1.user.username
@@ -279,22 +339,14 @@ async function createMatch(player1, player2) {
       id: player2.id,
       name: player2.user.username
     }
-  });
+  };
 
-  const embed = new EmbedBuilder()
-    .setTitle("💣 TIME BOMB 1V1")
-    .setDescription(
-      `**Player 1:** <@${player1.id}>\n` +
-      `**Player 2:** <@${player2.id}>\n\n` +
-      `لتسجيل النتيجة استخدم:\n` +
-      `\`/win score:5-1\`\n\n` +
-      `النتيجة تكون حسب ترتيب اللاعبين فوق.`
-    )
-    .setColor(0x5865f2);
+  matches.set(channel.id, match);
 
   await channel.send({
-    content: `<@${player1.id}> <@${player2.id}>`,
-    embeds: [embed],
+    content:
+      `<@${player1.id}> <@${player2.id}>`,
+    embeds: [createMatchEmbed(match)],
     ...matchControls()
   });
 
@@ -342,6 +394,31 @@ function recordResult(
   saveLeaderboard();
 }
 
+async function sendNewLeaderboardEmbed() {
+  if (!leaderboard._channelId) {
+    return;
+  }
+
+  try {
+    const channel = await client.channels.fetch(
+      leaderboard._channelId
+    );
+
+    if (!channel) {
+      return;
+    }
+
+    await channel.send({
+      embeds: [createLeaderboardEmbed()]
+    });
+  } catch (error) {
+    console.error(
+      "LEADERBOARD SEND ERROR:",
+      error
+    );
+  }
+}
+
 async function registerCommands() {
   const commands = [
     new SlashCommandBuilder()
@@ -353,13 +430,13 @@ async function registerCommands() {
     new SlashCommandBuilder()
       .setName("leaderboard")
       .setDescription(
-        "Create or update the leaderboard"
+        "Set this channel as the leaderboard channel"
       ),
 
     new SlashCommandBuilder()
       .setName("lb")
       .setDescription(
-        "Create or update the leaderboard"
+        "Set this channel as the leaderboard channel"
       ),
 
     new SlashCommandBuilder()
@@ -407,8 +484,13 @@ client.on(
   async interaction => {
     try {
       if (interaction.isChatInputCommand()) {
-        if (interaction.commandName === "setup") {
-          await interaction.reply(mainPanel());
+        if (
+          interaction.commandName === "setup"
+        ) {
+          await interaction.reply(
+            mainPanel()
+          );
+
           return;
         }
 
@@ -416,30 +498,33 @@ client.on(
           interaction.commandName === "leaderboard" ||
           interaction.commandName === "lb"
         ) {
-          const message =
-            await interaction.channel.send({
-              embeds: [leaderboardEmbed()]
-            });
-
           leaderboard._channelId =
             interaction.channel.id;
-
-          leaderboard._messageId =
-            message.id;
 
           saveLeaderboard();
 
           await interaction.reply({
-            content: "Leaderboard created.",
+            content:
+              "✅ تم تعيين هذا الروم كروم الليدربورد.",
             ephemeral: true
+          });
+
+          await interaction.channel.send({
+            embeds: [
+              createLeaderboardEmbed()
+            ]
           });
 
           return;
         }
 
-        if (interaction.commandName === "win") {
+        if (
+          interaction.commandName === "win"
+        ) {
           const match =
-            matches.get(interaction.channel.id);
+            matches.get(
+              interaction.channel.id
+            );
 
           if (!match) {
             await interaction.reply({
@@ -487,12 +572,13 @@ client.on(
               true
             );
 
-          const parsed = parseScore(score);
+          const parsed =
+            parseScore(score);
 
           if (!parsed) {
             await interaction.reply({
               content:
-                "❌ النتيجة غير صحيحة. اكتبها مثل: `5-1`",
+                "❌ النتيجة غير صحيحة. اكتبها مثل `5-1`.",
               ephemeral: true
             });
 
@@ -521,24 +607,19 @@ client.on(
             ? match.player2
             : match.player1;
 
-          const resultEmbed =
-            new EmbedBuilder()
-              .setTitle("🏆 MATCH RESULT")
-              .setDescription(
-                `**${match.player1.name}** — \`${parsed.player1Score}\`\n` +
-                `**${match.player2.name}** — \`${parsed.player2Score}\`\n\n` +
-                `🏆 Winner: <@${winner.id}>\n` +
-                `+3 Points\n\n` +
-                `+1 Point: <@${loser.id}>`
-              )
-              .setColor(0x57f287)
-              .setTimestamp();
-
           await interaction.reply({
-            embeds: [resultEmbed]
+            embeds: [
+              createResultEmbed(
+                match,
+                parsed.player1Score,
+                parsed.player2Score,
+                winner,
+                loser
+              )
+            ]
           });
 
-          await updateLeaderboardMessage();
+          await sendNewLeaderboardEmbed();
 
           return;
         }
@@ -546,7 +627,8 @@ client.on(
 
       if (interaction.isButton()) {
         if (
-          interaction.customId === "find_1v1"
+          interaction.customId ===
+          "find_1v1"
         ) {
           if (
             queue.includes(
@@ -568,7 +650,7 @@ client.on(
 
           await interaction.reply({
             content:
-              "✅ دخلت قائمة الانتظار.",
+              "✅ دخلت قائمة الانتظار. انتظر خصمك.",
             ephemeral: true
           });
 
@@ -635,6 +717,35 @@ client.on(
           const channelId =
             interaction.channel.id;
 
+          const match =
+            matches.get(channelId);
+
+          if (!match) {
+            await interaction.reply({
+              content:
+                "❌ هذا الروم ليس روم ماتش.",
+              ephemeral: true
+            });
+
+            return;
+          }
+
+          const isPlayer =
+            interaction.user.id ===
+              match.player1.id ||
+            interaction.user.id ===
+              match.player2.id;
+
+          if (!isPlayer) {
+            await interaction.reply({
+              content:
+                "❌ فقط لاعبي الماتش يقدرون يرسلون الرابط.",
+              ephemeral: true
+            });
+
+            return;
+          }
+
           const modal =
             new ModalBuilder()
               .setCustomId(
@@ -677,7 +788,7 @@ client.on(
         ) {
           await interaction.reply({
             content:
-              `<@&${DEVELOPMENT_ROLE_ID}>`,
+              `📢 <@&${DEVELOPMENT_ROLE_ID}>`,
             allowedMentions: {
               roles: [
                 DEVELOPMENT_ROLE_ID
@@ -757,7 +868,9 @@ client.on(
         }
       }
 
-      if (interaction.isModalSubmit()) {
+      if (
+        interaction.isModalSubmit()
+      ) {
         if (
           interaction.customId.startsWith(
             "game_link_modal_"
@@ -782,12 +895,30 @@ client.on(
             return;
           }
 
+          const isPlayer =
+            interaction.user.id ===
+              match.player1.id ||
+            interaction.user.id ===
+              match.player2.id;
+
+          if (!isPlayer) {
+            await interaction.reply({
+              content:
+                "❌ فقط لاعبي الماتش يقدرون يرسلون الرابط.",
+              ephemeral: true
+            });
+
+            return;
+          }
+
           const link =
             interaction.fields.getTextInputValue(
               "link"
             );
 
-          if (!validRobloxLink(link)) {
+          if (
+            !validRobloxLink(link)
+          ) {
             await interaction.reply({
               content:
                 "❌ حط رابط Roblox صحيح.",

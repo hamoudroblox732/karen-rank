@@ -14,9 +14,11 @@ const {
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID;
+const DEVELOPMENT_ROLE_ID = process.env.DEVELOPMENT_ROLE_ID;
 
 const queue = [];
 const matches = new Map();
+const closingMatches = new Set();
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds]
@@ -40,7 +42,7 @@ async function registerCommands() {
   );
 }
 
-function panel() {
+function mainPanel() {
   const embed = new EmbedBuilder()
     .setTitle("KAREN RANK")
     .setDescription(
@@ -71,6 +73,22 @@ function panel() {
     embeds: [embed],
     components: [row]
   };
+}
+
+function matchControls(channelId) {
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`exit_${channelId}`)
+      .setLabel("🚪 خروج من الماتش")
+      .setStyle(ButtonStyle.Danger),
+
+    new ButtonBuilder()
+      .setCustomId(`admin_${channelId}`)
+      .setLabel("🆘 استدعاء Admin")
+      .setStyle(ButtonStyle.Secondary)
+  );
+
+  return [row];
 }
 
 async function createMatch(guild, player1, player2) {
@@ -111,31 +129,35 @@ async function createMatch(guild, player1, player2) {
     player2: player2.id
   });
 
-  const embed = new EmbedBuilder()
+  const matchEmbed = new EmbedBuilder()
     .setTitle("⚔️ MATCH FOUND")
     .setDescription(
       `👤 **Player 1:** <@${player1.id}>\n` +
       `👤 **Player 2:** <@${player2.id}>\n\n` +
       "تم إنشاء روم خاص لكم.\n" +
       "تكلموا هنا، أضيفوا بعض في Roblox، وبعدها العبوا Time Bomb 1v1."
+    )
+    .setFooter({
+      text: "Karen Rank • Time Bomb 1v1"
+    });
+
+  const controlEmbed = new EmbedBuilder()
+    .setTitle("🎮 MATCH CONTROLS")
+    .setDescription(
+      "**🚪 خروج من الماتش**\n" +
+      "إذا ضغطت عليه، يبدأ عداد 10 ثواني وبعدها يتم إغلاق الروم للجميع.\n\n" +
+      "**🆘 استدعاء Admin**\n" +
+      "يستدعي فريق الـDevelopment للمساعدة داخل الروم."
     );
-
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`close_${channel.id}`)
-      .setLabel("CLOSE ROOM")
-      .setStyle(ButtonStyle.Danger),
-
-    new ButtonBuilder()
-      .setCustomId(`report_${channel.id}`)
-      .setLabel("REPORT")
-      .setStyle(ButtonStyle.Secondary)
-  );
 
   await channel.send({
     content: `<@${player1.id}> <@${player2.id}>`,
-    embeds: [embed],
-    components: [row]
+    embeds: [matchEmbed]
+  });
+
+  await channel.send({
+    embeds: [controlEmbed],
+    components: matchControls(channel.id)
   });
 
   return channel;
@@ -155,7 +177,7 @@ client.once("ready", async () => {
 client.on("interactionCreate", async interaction => {
   if (interaction.isChatInputCommand()) {
     if (interaction.commandName === "setup") {
-      await interaction.channel.send(panel());
+      await interaction.channel.send(mainPanel());
 
       await interaction.reply({
         content: "✅ تم إرسال لوحة Karen Rank.",
@@ -249,8 +271,8 @@ client.on("interactionCreate", async interaction => {
     });
   }
 
-  if (interaction.customId.startsWith("close_")) {
-    const channelId = interaction.customId.replace("close_", "");
+  if (interaction.customId.startsWith("exit_")) {
+    const channelId = interaction.customId.replace("exit_", "");
     const match = matches.get(channelId);
 
     if (!match) {
@@ -271,31 +293,104 @@ client.on("interactionCreate", async interaction => {
 
     if (!isPlayer && !isStaff) {
       return interaction.reply({
-        content: "❌ ما عندك صلاحية تقفل هذا الروم.",
+        content: "❌ ما عندك صلاحية.",
         ephemeral: true
       });
     }
 
-    matches.delete(channelId);
+    if (closingMatches.has(channelId)) {
+      return interaction.reply({
+        content: "⏳ الروم بالفعل في مرحلة الإغلاق.",
+        ephemeral: true
+      });
+    }
 
-    await interaction.reply("🔒 سيتم إغلاق الروم...");
+    closingMatches.add(channelId);
 
-    setTimeout(async () => {
+    const countdownEmbed = new EmbedBuilder()
+      .setTitle("🚪 MATCH CLOSING")
+      .setDescription(
+        "تم طلب الخروج من الماتش.\n\n" +
+        "🔒 سيتم إغلاق هذا الروم خلال **10 ثواني**."
+      );
+
+    await interaction.reply({
+      embeds: [countdownEmbed]
+    });
+
+    let seconds = 10;
+
+    const countdown = setInterval(async () => {
+      seconds--;
+
+      if (seconds <= 0) {
+        clearInterval(countdown);
+        matches.delete(channelId);
+        closingMatches.delete(channelId);
+
+        try {
+          await interaction.channel.delete("Time Bomb match closed");
+        } catch {}
+        return;
+      }
+
       try {
-        await interaction.channel.delete();
-      } catch {}
-    }, 1500);
+        await interaction.editReply({
+          embeds: [
+            new EmbedBuilder()
+              .setTitle("🚪 MATCH CLOSING")
+              .setDescription(
+                `تم طلب الخروج من الماتش.\n\n` +
+                `🔒 سيتم إغلاق هذا الروم خلال **${seconds} ثواني**.`
+              )
+          ]
+        });
+      } catch {
+        clearInterval(countdown);
+        closingMatches.delete(channelId);
+      }
+    }, 1000);
 
     return;
   }
 
-  if (interaction.customId.startsWith("report_")) {
-    return interaction.reply({
+  if (interaction.customId.startsWith("admin_")) {
+    const channelId = interaction.customId.replace("admin_", "");
+    const match = matches.get(channelId);
+
+    if (!match) {
+      return interaction.reply({
+        content: "❌ المباراة غير موجودة.",
+        ephemeral: true
+      });
+    }
+
+    const isPlayer =
+      interaction.user.id === match.player1 ||
+      interaction.user.id === match.player2;
+
+    if (!isPlayer) {
+      return interaction.reply({
+        content: "❌ هذا الزر للاعبين فقط.",
+        ephemeral: true
+      });
+    }
+
+    if (!DEVELOPMENT_ROLE_ID) {
+      return interaction.reply({
+        content: "❌ لم يتم إعداد DEVELOPMENT_ROLE_ID في Render.",
+        ephemeral: true
+      });
+    }
+
+    await interaction.reply({
       content:
-        "🚨 تم إرسال البلاغ للإدارة.\n" +
-        "تقدر تشرح المشكلة هنا داخل الروم.",
-      ephemeral: true
+        `<@&${DEVELOPMENT_ROLE_ID}> 🆘 **Admin Assistance Requested**\n` +
+        `المباراة تحتاج مساعدة.\n` +
+        `Players: <@${match.player1}> vs <@${match.player2}>`
     });
+
+    return;
   }
 });
 

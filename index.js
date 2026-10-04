@@ -42,6 +42,46 @@ async function registerCommands() {
   );
 }
 
+function cleanupPlayer(playerId) {
+  const queueIndex = queue.indexOf(playerId);
+
+  if (queueIndex !== -1) {
+    queue.splice(queueIndex, 1);
+  }
+
+  for (const [channelId, match] of matches.entries()) {
+    if (
+      match.player1 === playerId ||
+      match.player2 === playerId
+    ) {
+      matches.delete(channelId);
+      closingMatches.delete(channelId);
+    }
+  }
+}
+
+function isPlayerInActiveMatch(guild, playerId) {
+  for (const [channelId, match] of matches.entries()) {
+    if (
+      match.player1 !== playerId &&
+      match.player2 !== playerId
+    ) {
+      continue;
+    }
+
+    const channel = guild.channels.cache.get(channelId);
+
+    if (channel) {
+      return true;
+    }
+
+    matches.delete(channelId);
+    closingMatches.delete(channelId);
+  }
+
+  return false;
+}
+
 function mainPanel() {
   const embed = new EmbedBuilder()
     .setTitle("KAREN RANK")
@@ -92,6 +132,40 @@ function matchControls(channelId) {
 }
 
 async function createMatch(guild, player1, player2) {
+  const overwrites = [
+    {
+      id: guild.roles.everyone.id,
+      deny: [PermissionFlagsBits.ViewChannel]
+    },
+    {
+      id: player1.id,
+      allow: [
+        PermissionFlagsBits.ViewChannel,
+        PermissionFlagsBits.SendMessages,
+        PermissionFlagsBits.ReadMessageHistory
+      ]
+    },
+    {
+      id: player2.id,
+      allow: [
+        PermissionFlagsBits.ViewChannel,
+        PermissionFlagsBits.SendMessages,
+        PermissionFlagsBits.ReadMessageHistory
+      ]
+    }
+  ];
+
+  if (DEVELOPMENT_ROLE_ID) {
+    overwrites.push({
+      id: DEVELOPMENT_ROLE_ID,
+      allow: [
+        PermissionFlagsBits.ViewChannel,
+        PermissionFlagsBits.SendMessages,
+        PermissionFlagsBits.ReadMessageHistory
+      ]
+    });
+  }
+
   const channel = await guild.channels.create({
     name: `match-${player1.username}-${player2.username}`
       .toLowerCase()
@@ -100,28 +174,7 @@ async function createMatch(guild, player1, player2) {
 
     type: ChannelType.GuildText,
 
-    permissionOverwrites: [
-      {
-        id: guild.roles.everyone.id,
-        deny: [PermissionFlagsBits.ViewChannel]
-      },
-      {
-        id: player1.id,
-        allow: [
-          PermissionFlagsBits.ViewChannel,
-          PermissionFlagsBits.SendMessages,
-          PermissionFlagsBits.ReadMessageHistory
-        ]
-      },
-      {
-        id: player2.id,
-        allow: [
-          PermissionFlagsBits.ViewChannel,
-          PermissionFlagsBits.SendMessages,
-          PermissionFlagsBits.ReadMessageHistory
-        ]
-      }
-    ]
+    permissionOverwrites: overwrites
   });
 
   matches.set(channel.id, {
@@ -193,23 +246,20 @@ client.on("interactionCreate", async interaction => {
   if (interaction.customId === "find") {
     const userId = interaction.user.id;
 
+    if (isPlayerInActiveMatch(interaction.guild, userId)) {
+      return interaction.reply({
+        content: "❌ أنت داخل مباراة حاليًا.",
+        ephemeral: true
+      });
+    }
+
+    cleanupPlayer(userId);
+
     if (queue.includes(userId)) {
       return interaction.reply({
         content: "⏳ أنت بالفعل في الـQueue.",
         ephemeral: true
       });
-    }
-
-    for (const match of matches.values()) {
-      if (
-        match.player1 === userId ||
-        match.player2 === userId
-      ) {
-        return interaction.reply({
-          content: "❌ أنت داخل مباراة حاليًا.",
-          ephemeral: true
-        });
-      }
     }
 
     if (queue.length === 0) {
@@ -221,15 +271,47 @@ client.on("interactionCreate", async interaction => {
       });
     }
 
-    const opponentId = queue.shift();
+    let opponentId = null;
+
+    while (queue.length > 0) {
+      const possibleOpponent = queue.shift();
+
+      if (possibleOpponent === userId) {
+        continue;
+      }
+
+      if (
+        !isPlayerInActiveMatch(
+          interaction.guild,
+          possibleOpponent
+        )
+      ) {
+        opponentId = possibleOpponent;
+        break;
+      }
+    }
+
+    if (!opponentId) {
+      queue.push(userId);
+
+      return interaction.reply({
+        content: "🔎 دخلت الـQueue. انتظر لاعبًا ثانيًا.",
+        ephemeral: true
+      });
+    }
 
     await interaction.deferReply({
       ephemeral: true
     });
 
     try {
-      const opponent = await interaction.guild.members.fetch(opponentId);
-      const player = await interaction.guild.members.fetch(userId);
+      const opponent = await interaction.guild.members.fetch(
+        opponentId
+      );
+
+      const player = await interaction.guild.members.fetch(
+        userId
+      );
 
       const channel = await createMatch(
         interaction.guild,
@@ -241,9 +323,9 @@ client.on("interactionCreate", async interaction => {
         content: `🎮 تم العثور على خصم!\n${channel}`
       });
     } catch (error) {
-      queue.unshift(opponentId);
-
       console.error(error);
+
+      queue.unshift(opponentId);
 
       await interaction.editReply({
         content: "❌ صار خطأ في إنشاء روم المباراة."
@@ -307,6 +389,9 @@ client.on("interactionCreate", async interaction => {
 
     closingMatches.add(channelId);
 
+    const player1 = match.player1;
+    const player2 = match.player2;
+
     const countdownEmbed = new EmbedBuilder()
       .setTitle("🚪 MATCH CLOSING")
       .setDescription(
@@ -325,12 +410,19 @@ client.on("interactionCreate", async interaction => {
 
       if (seconds <= 0) {
         clearInterval(countdown);
+
         matches.delete(channelId);
         closingMatches.delete(channelId);
 
+        cleanupPlayer(player1);
+        cleanupPlayer(player2);
+
         try {
-          await interaction.channel.delete("Time Bomb match closed");
+          await interaction.channel.delete(
+            "Time Bomb match closed"
+          );
         } catch {}
+
         return;
       }
 
@@ -340,14 +432,19 @@ client.on("interactionCreate", async interaction => {
             new EmbedBuilder()
               .setTitle("🚪 MATCH CLOSING")
               .setDescription(
-                `تم طلب الخروج من الماتش.\n\n` +
+                "تم طلب الخروج من الماتش.\n\n" +
                 `🔒 سيتم إغلاق هذا الروم خلال **${seconds} ثواني**.`
               )
           ]
         });
       } catch {
         clearInterval(countdown);
+
+        matches.delete(channelId);
         closingMatches.delete(channelId);
+
+        cleanupPlayer(player1);
+        cleanupPlayer(player2);
       }
     }, 1000);
 
@@ -387,7 +484,10 @@ client.on("interactionCreate", async interaction => {
       content:
         `<@&${DEVELOPMENT_ROLE_ID}> 🆘 **Admin Assistance Requested**\n` +
         `المباراة تحتاج مساعدة.\n` +
-        `Players: <@${match.player1}> vs <@${match.player2}>`
+        `Players: <@${match.player1}> vs <@${match.player2}>`,
+      allowedMentions: {
+        roles: [DEVELOPMENT_ROLE_ID]
+      }
     });
 
     return;

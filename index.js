@@ -57,8 +57,10 @@ function saveLeaderboard() {
 }
 
 function isOwner(interaction) {
-  return interaction.guild &&
-    interaction.user.id === interaction.guild.ownerId;
+  return (
+    interaction.guild &&
+    interaction.user.id === interaction.guild.ownerId
+  );
 }
 
 function validRobloxLink(link) {
@@ -326,6 +328,24 @@ function createResultEmbed(
     .setColor(0x57f287)
     .setFooter({
       text: "Karen Rank • Result Recorded"
+    })
+    .setTimestamp();
+}
+
+function createClosingEmbed(seconds) {
+  return new EmbedBuilder()
+    .setTitle("🔒 MATCH ROOM CLOSING")
+    .setDescription(
+      "### ROOM WILL BE DELETED\n\n" +
+      "━━━━━━━━━━━━━━━━━━━━\n\n" +
+      `## ${seconds}\n` +
+      `**${seconds === 1 ? "second" : "seconds"} remaining**\n\n` +
+      "━━━━━━━━━━━━━━━━━━━━\n\n" +
+      "سيتم حذف روم الماتش تلقائيًا."
+    )
+    .setColor(0xed4245)
+    .setFooter({
+      text: "Karen Rank • Match Room"
     })
     .setTimestamp();
 }
@@ -727,6 +747,34 @@ client.on(
               player1,
               player2
             );
+
+            try {
+              await interaction.followUp({
+                content:
+                  `🎮 تم إيجاد خصمك: <@${player1Id}>`,
+                ephemeral: true
+              });
+            } catch {}
+
+            try {
+              const player1Interaction =
+                interaction.message;
+
+              if (player1Interaction) {
+                await interaction.followUp({
+                  content:
+                    `🎮 تم إيجاد خصمك: <@${player2Id}>`,
+                  ephemeral: true
+                });
+              }
+            } catch {}
+
+            try {
+              await interaction.editReply({
+                content:
+                  `🎮 تم إيجاد خصمك: <@${player1Id}>`
+              });
+            } catch {}
           }
 
           return;
@@ -876,12 +924,17 @@ client.on(
             channelId
           );
 
-          await interaction.reply({
-            content:
-              "🔒 سيتم إغلاق الروم خلال 10 ثوانٍ..."
-          });
-
           let remaining = 10;
+
+          const sentMessage =
+            await interaction.reply({
+              embeds: [
+                createClosingEmbed(
+                  remaining
+                )
+              ],
+              fetchReply: true
+            });
 
           const timer =
             setInterval(async () => {
@@ -910,10 +963,16 @@ client.on(
               }
 
               try {
-                await interaction.channel.send(
-                  `🔒 إغلاق الروم بعد ${remaining} ثواني...`
-                );
-              } catch {}
+                await sentMessage.edit({
+                  embeds: [
+                    createClosingEmbed(
+                      remaining
+                    )
+                  ]
+                });
+              } catch {
+                clearInterval(timer);
+              }
             }, 1000);
 
           return;

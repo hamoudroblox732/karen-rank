@@ -20,8 +20,7 @@ const fs = require("fs");
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID;
-const DEVELOPMENT_ROLE_ID =
-  process.env.DEVELOPMENT_ROLE_ID;
+const DEVELOPMENT_ROLE_ID = process.env.DEVELOPMENT_ROLE_ID;
 
 const queue = [];
 const matches = new Map();
@@ -34,22 +33,16 @@ let leaderboardMessageId = null;
 if (fs.existsSync("leaderboard.json")) {
   try {
     const data = JSON.parse(
-      fs.readFileSync(
-        "leaderboard.json",
-        "utf8"
-      )
+      fs.readFileSync("leaderboard.json", "utf8")
     );
 
-    leaderboard =
-      data.leaderboard || {};
-
-    leaderboardChannelId =
-      data.channelId || null;
-
-    leaderboardMessageId =
-      data.messageId || null;
+    leaderboard = data.leaderboard || {};
+    leaderboardChannelId = data.channelId || null;
+    leaderboardMessageId = data.messageId || null;
   } catch {
     leaderboard = {};
+    leaderboardChannelId = null;
+    leaderboardMessageId = null;
   }
 }
 
@@ -59,10 +52,8 @@ function saveLeaderboard() {
     JSON.stringify(
       {
         leaderboard,
-        channelId:
-          leaderboardChannelId,
-        messageId:
-          leaderboardMessageId
+        channelId: leaderboardChannelId,
+        messageId: leaderboardMessageId
       },
       null,
       2
@@ -81,18 +72,15 @@ const client = new Client({
 const commands = [
   {
     name: "setup",
-    description:
-      "Send the Karen Rank 1v1 panel"
+    description: "Send the Karen Rank 1v1 panel"
   },
   {
     name: "leaderboard",
-    description:
-      "Create the Karen Rank leaderboard"
+    description: "Create the Karen Rank leaderboard"
   },
   {
     name: "lb",
-    description:
-      "Create the Karen Rank leaderboard"
+    description: "Create the Karen Rank leaderboard"
   }
 ];
 
@@ -120,43 +108,34 @@ async function registerCommands() {
 }
 
 function mainPanel() {
-  const embed =
-    new EmbedBuilder()
-      .setTitle("KAREN RANK")
-      .setDescription(
-        "🎮 **TIME BOMB 1V1**\n\n" +
-        "ما عندك أحد تلعب معه؟\n" +
-        "ادخل الـQueue وابحث عن خصم.\n\n" +
-        "اضغط **FIND 1V1** للبدء."
-      )
-      .addFields({
-        name: "Players Waiting",
-        value:
-          `**${queue.length}**`,
-        inline: false
-      })
-      .setFooter({
-        text:
-          "Karen Rank • Time Bomb 1v1"
-      });
+  const embed = new EmbedBuilder()
+    .setTitle("KAREN RANK")
+    .setDescription(
+      "🎮 **TIME BOMB 1V1**\n\n" +
+      "ما عندك أحد تلعب معه؟\n" +
+      "ادخل الـQueue وابحث عن خصم.\n\n" +
+      "اضغط **FIND 1V1** للبدء."
+    )
+    .addFields({
+      name: "Players Waiting",
+      value: `**${queue.length}**`,
+      inline: false
+    })
+    .setFooter({
+      text: "Karen Rank • Time Bomb 1v1"
+    });
 
-  const row =
-    new ActionRowBuilder()
-      .addComponents(
-        new ButtonBuilder()
-          .setCustomId("find")
-          .setLabel("FIND 1V1")
-          .setStyle(
-            ButtonStyle.Primary
-          ),
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId("find")
+      .setLabel("FIND 1V1")
+      .setStyle(ButtonStyle.Primary),
 
-        new ButtonBuilder()
-          .setCustomId("leave")
-          .setLabel("LEAVE QUEUE")
-          .setStyle(
-            ButtonStyle.Secondary
-          )
-      );
+    new ButtonBuilder()
+      .setCustomId("leave")
+      .setLabel("LEAVE QUEUE")
+      .setStyle(ButtonStyle.Secondary)
+  );
 
   return {
     embeds: [embed],
@@ -166,89 +145,48 @@ function mainPanel() {
 
 function matchControls(channelId) {
   return [
-    new ActionRowBuilder()
-      .addComponents(
-        new ButtonBuilder()
-          .setCustomId(
-            `game_${channelId}`
-          )
-          .setLabel(
-            "🔗 دخول القيم"
-          )
-          .setStyle(
-            ButtonStyle.Primary
-          ),
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`game_${channelId}`)
+        .setLabel("🔗 دخول القيم")
+        .setStyle(ButtonStyle.Primary),
 
-        new ButtonBuilder()
-          .setCustomId(
-            `result_${channelId}`
-          )
-          .setLabel(
-            "🏆 إرسال النتيجة"
-          )
-          .setStyle(
-            ButtonStyle.Success
-          ),
+      new ButtonBuilder()
+        .setCustomId(`result_${channelId}`)
+        .setLabel("🏆 إرسال النتيجة")
+        .setStyle(ButtonStyle.Success),
 
-        new ButtonBuilder()
-          .setCustomId(
-            `admin_${channelId}`
-          )
-          .setLabel(
-            "استدعاء Admin"
-          )
-          .setStyle(
-            ButtonStyle.Secondary
-          ),
+      new ButtonBuilder()
+        .setCustomId(`admin_${channelId}`)
+        .setLabel("استدعاء Admin")
+        .setStyle(ButtonStyle.Secondary),
 
-        new ButtonBuilder()
-          .setCustomId(
-            `exit_${channelId}`
-          )
-          .setLabel(
-            "🔒 إغلاق الروم"
-          )
-          .setStyle(
-            ButtonStyle.Danger
-          )
-      )
+      new ButtonBuilder()
+        .setCustomId(`exit_${channelId}`)
+        .setLabel("🔒 إغلاق الروم")
+        .setStyle(ButtonStyle.Danger)
+    )
   ];
 }
 
 function removeFromQueue(userId) {
   let index;
 
-  while (
-    (index =
-      queue.indexOf(userId)) !== -1
-  ) {
+  while ((index = queue.indexOf(userId)) !== -1) {
     queue.splice(index, 1);
   }
 }
 
-function getActiveMatch(
-  guild,
-  userId
-) {
-  for (
-    const [
-      channelId,
-      match
-    ] of matches
-  ) {
+function getActiveMatch(guild, userId) {
+  for (const [channelId, match] of matches.entries()) {
     if (
-      match.player1 !==
-        userId &&
-      match.player2 !==
-        userId
+      match.player1 !== userId &&
+      match.player2 !== userId
     ) {
       continue;
     }
 
-    const channel =
-      guild.channels.cache.get(
-        channelId
-      );
+    const channel = guild.channels.cache.get(channelId);
 
     if (channel) {
       return {
@@ -258,23 +196,16 @@ function getActiveMatch(
     }
 
     matches.delete(channelId);
-    closingMatches.delete(
-      channelId
-    );
+    closingMatches.delete(channelId);
   }
 
   return null;
 }
 
-async function createMatch(
-  guild,
-  player1,
-  player2
-) {
+async function createMatch(guild, player1, player2) {
   const permissions = [
     {
-      id:
-        guild.roles.everyone.id,
+      id: guild.roles.everyone.id,
       deny: [
         PermissionFlagsBits.ViewChannel
       ]
@@ -321,87 +252,61 @@ async function createMatch(
   const name1 =
     player1.username
       .toLowerCase()
-      .replace(
-        /[^a-z0-9-]/g,
-        ""
-      )
-      .slice(0, 20) ||
-    "player1";
+      .replace(/[^a-z0-9-]/g, "")
+      .slice(0, 25) || "player1";
 
   const name2 =
     player2.username
       .toLowerCase()
-      .replace(
-        /[^a-z0-9-]/g,
-        ""
-      )
-      .slice(0, 20) ||
-    "player2";
+      .replace(/[^a-z0-9-]/g, "")
+      .slice(0, 25) || "player2";
 
-  const channel =
-    await guild.channels.create({
-      name:
-        `match-${name1}-${name2}`,
-      type:
-        ChannelType.GuildText,
-      permissionOverwrites:
-        permissions
+  const channel = await guild.channels.create({
+    name: `match-${name1}-${name2}`,
+    type: ChannelType.GuildText,
+    permissionOverwrites: permissions
+  });
+
+  matches.set(channel.id, {
+    player1: player1.id,
+    player2: player2.id,
+    player1Name: player1.username,
+    player2Name: player2.username,
+    resultSubmitted: false
+  });
+
+  const matchEmbed = new EmbedBuilder()
+    .setTitle("⚔️ MATCH FOUND")
+    .setDescription(
+      `👤 **Player 1:** <@${player1.id}>\n` +
+      `👤 **Player 2:** <@${player2.id}>\n\n` +
+      "تم العثور على خصم.\n" +
+      "العبوا الـ1v1 ثم أرسلوا النتيجة.\n\n" +
+      "**ترتيب النتيجة:**\n" +
+      `Player 1 **${player1.username}** - Player 2 **${player2.username}**`
+    )
+    .setFooter({
+      text: "Karen Rank • Time Bomb 1v1"
     });
 
-  matches.set(
-    channel.id,
-    {
-      player1: player1.id,
-      player2: player2.id,
-      player1Name:
-        player1.username,
-      player2Name:
-        player2.username,
-      resultSubmitted: false
-    }
-  );
-
-  const matchEmbed =
-    new EmbedBuilder()
-      .setTitle(
-        "⚔️ MATCH FOUND"
-      )
-      .setDescription(
-        `👤 **Player 1:** <@${player1.id}>\n` +
-        `👤 **Player 2:** <@${player2.id}>\n\n` +
-        "تم العثور على خصم.\n" +
-        "العبوا الـ1v1 ثم أرسلوا النتيجة.\n\n" +
-        "**ترتيب النتيجة:**\n" +
-        `Player 1 = ${player1.username}\n` +
-        `Player 2 = ${player2.username}`
-      )
-      .setFooter({
-        text:
-          "Karen Rank • Time Bomb 1v1"
-      });
-
-  const controlsEmbed =
-    new EmbedBuilder()
-      .setTitle(
-        "🎮 MATCH CONTROL"
-      )
-      .setDescription(
-        "**🔗 دخول القيم**\n" +
-        "اضغط الزر وأرسل رابط Roblox.\n\n" +
-        "**🏆 إرسال النتيجة**\n" +
-        "اضغط الزر واكتب النتيجة مثل `5-2`.\n\n" +
-        "**استدعاء Admin**\n" +
-        "استدعاء فريق Development.\n\n" +
-        "**🔒 إغلاق الروم**\n" +
-        "إغلاق المباراة بعد 10 ثواني."
-      )
-      .setFooter({
-        text: "Karen Rank"
-      });
+  const controlsEmbed = new EmbedBuilder()
+    .setTitle("🎮 MATCH CONTROL")
+    .setDescription(
+      "**🔗 دخول القيم**\n" +
+      "اضغط الزر وأرسل رابط Roblox.\n\n" +
+      "**🏆 إرسال النتيجة**\n" +
+      "اضغط الزر وأدخل النتيجة مثل 5-2.\n\n" +
+      "**استدعاء Admin**\n" +
+      "استدعاء فريق Development.\n\n" +
+      "**🔒 إغلاق الروم**\n" +
+      "إغلاق المباراة بعد 10 ثواني."
+    )
+    .setFooter({
+      text: "Karen Rank"
+    });
 
   await channel.send({
-    content:
-      `<@${player1.id}> <@${player2.id}>`,
+    content: `<@${player1.id}> <@${player2.id}>`,
     embeds: [matchEmbed],
     allowedMentions: {
       users: [
@@ -412,13 +317,8 @@ async function createMatch(
   });
 
   await channel.send({
-    embeds: [
-      controlsEmbed
-    ],
-    components:
-      matchControls(
-        channel.id
-      )
+    embeds: [controlsEmbed],
+    components: matchControls(channel.id)
   });
 
   return channel;
@@ -431,11 +331,8 @@ function validRobloxLink(value) {
     return (
       url.protocol === "https:" &&
       (
-        url.hostname ===
-          "roblox.com" ||
-        url.hostname.endsWith(
-          ".roblox.com"
-        )
+        url.hostname === "roblox.com" ||
+        url.hostname.endsWith(".roblox.com")
       )
     );
   } catch {
@@ -444,99 +341,74 @@ function validRobloxLink(value) {
 }
 
 function parseScore(value) {
-  const match =
-    value
-      .trim()
-      .match(
-        /^(\d+)\s*[-:]\s*(\d+)$/
-      );
+  const match = value
+    .trim()
+    .match(/^(\d+)\s*[-:]\s*(\d+)$/);
 
   if (!match) {
     return null;
   }
 
   return {
-    player1Score:
-      Number(match[1]),
-    player2Score:
-      Number(match[2])
+    player1Score: Number(match[1]),
+    player2Score: Number(match[2])
   };
 }
 
 function getLeaderboardText() {
-  const entries =
-    Object.entries(
-      leaderboard
-    );
+  const entries = Object.entries(leaderboard);
 
-  if (
-    entries.length === 0
-  ) {
+  if (entries.length === 0) {
     return "لا توجد نتائج مسجلة حتى الآن.";
   }
 
-  entries.sort(
-    (a, b) =>
-      b[1].points -
-        a[1].points ||
-      b[1].wins -
-        a[1].wins
-  );
+  entries.sort((a, b) => {
+    return (
+      b[1].points - a[1].points ||
+      b[1].wins - a[1].wins
+    );
+  });
 
   return entries
     .slice(0, 10)
-    .map(
-      (
-        [id, data],
-        index
-      ) =>
+    .map(([id, data], index) => {
+      return (
         `**${index + 1}.** <@${id}> — ` +
         `🏆 **${data.wins} Wins** • ` +
         `❌ ${data.losses} Losses • ` +
         `⭐ ${data.points} Points`
-    )
+      );
+    })
     .join("\n");
 }
 
 async function updateLeaderboard() {
-  if (
-    !leaderboardChannelId
-  ) {
+  if (!leaderboardChannelId) {
     return;
   }
 
-  const channel =
-    client.channels.cache.get(
-      leaderboardChannelId
-    );
+  const channel = client.channels.cache.get(
+    leaderboardChannelId
+  );
 
   if (!channel) {
     return;
   }
 
-  const embed =
-    new EmbedBuilder()
-      .setTitle(
-        "🏆 KAREN RANK LEADERBOARD"
-      )
-      .setDescription(
-        getLeaderboardText()
-      )
-      .setFooter({
-        text:
-          "Karen Rank • Time Bomb 1v1"
-      });
+  const embed = new EmbedBuilder()
+    .setTitle("🏆 KAREN RANK LEADERBOARD")
+    .setDescription(getLeaderboardText())
+    .setFooter({
+      text: "Karen Rank • Time Bomb 1v1"
+    });
 
   let message = null;
 
-  if (
-    leaderboardMessageId
-  ) {
+  if (leaderboardMessageId) {
     try {
-      message =
-        await channel.messages.fetch(
-          leaderboardMessageId
-        );
+      message = await channel.messages.fetch(
+        leaderboardMessageId
+      );
     } catch {
       message = null;
     }
@@ -547,14 +419,11 @@ async function updateLeaderboard() {
       embeds: [embed]
     });
   } else {
-    const newMessage =
-      await channel.send({
-        embeds: [embed]
-      });
+    const newMessage = await channel.send({
+      embeds: [embed]
+    });
 
-    leaderboardMessageId =
-      newMessage.id;
-
+    leaderboardMessageId = newMessage.id;
     saveLeaderboard();
   }
 }
@@ -565,104 +434,68 @@ async function recordResult(
   player1Score,
   player2Score
 ) {
-  if (
-    match.resultSubmitted
-  ) {
+  if (match.resultSubmitted) {
     return false;
   }
 
-  if (
-    player1Score ===
-    player2Score
-  ) {
+  if (player1Score === player2Score) {
     return false;
   }
+
+  match.resultSubmitted = true;
 
   const winnerId =
-    player1Score >
-    player2Score
+    player1Score > player2Score
       ? match.player1
       : match.player2;
 
   const loserId =
-    winnerId ===
-    match.player1
+    winnerId === match.player1
       ? match.player2
       : match.player1;
 
-  if (
-    !leaderboard[
-      match.player1
-    ]
-  ) {
-    leaderboard[
-      match.player1
-    ] = {
+  if (!leaderboard[match.player1]) {
+    leaderboard[match.player1] = {
       wins: 0,
       losses: 0,
       points: 0
     };
   }
 
-  if (
-    !leaderboard[
-      match.player2
-    ]
-  ) {
-    leaderboard[
-      match.player2
-    ] = {
+  if (!leaderboard[match.player2]) {
+    leaderboard[match.player2] = {
       wins: 0,
       losses: 0,
       points: 0
     };
   }
 
-  leaderboard[
-    winnerId
-  ].wins += 1;
+  leaderboard[winnerId].wins += 1;
+  leaderboard[winnerId].points += 3;
 
-  leaderboard[
-    winnerId
-  ].points += 3;
-
-  leaderboard[
-    loserId
-  ].losses += 1;
-
-  leaderboard[
-    loserId
-  ].points += 1;
-
-  match.resultSubmitted =
-    true;
+  leaderboard[loserId].losses += 1;
+  leaderboard[loserId].points += 1;
 
   saveLeaderboard();
 
-  const resultEmbed =
-    new EmbedBuilder()
-      .setTitle(
-        "🏆 MATCH RESULT"
-      )
-      .setDescription(
-        `👤 **Player 1 — ${match.player1Name}:** ${player1Score}\n` +
-        `👤 **Player 2 — ${match.player2Name}:** ${player2Score}\n\n` +
-        `🥇 **Winner:** <@${winnerId}>\n` +
-        `❌ **Loser:** <@${loserId}>\n\n` +
-        `🏆 <@${winnerId}> حصل على **3 نقاط**\n` +
-        `⭐ <@${loserId}> حصل على **1 نقطة**`
-      )
-      .setFooter({
-        text:
-          "Karen Rank • Result Recorded"
-      });
+  const resultEmbed = new EmbedBuilder()
+    .setTitle("🏆 MATCH RESULT")
+    .setDescription(
+      `👤 **Player 1 — ${match.player1Name}:** ${player1Score}\n` +
+      `👤 **Player 2 — ${match.player2Name}:** ${player2Score}\n\n` +
+      `🥇 **Winner:** <@${winnerId}>\n` +
+      `❌ **Loser:** <@${loserId}>\n\n` +
+      `🏆 <@${winnerId}> حصل على **3 نقاط**\n` +
+      `⭐ <@${loserId}> حصل على **1 نقطة**`
+    )
+    .setFooter({
+      text: "Karen Rank • Result Recorded"
+    });
 
   await channel.send({
     content:
       `<@${match.player1}> <@${match.player2}>`,
-    embeds: [
-      resultEmbed
-    ],
+    embeds: [resultEmbed],
     allowedMentions: {
       users: [
         match.player1,
@@ -676,48 +509,37 @@ async function recordResult(
   return true;
 }
 
-client.once(
-  "clientReady",
-  async () => {
-    console.log(
-      `Karen Rank online as ${client.user.tag}`
+client.once("clientReady", async () => {
+  console.log(
+    `Karen Rank online as ${client.user.tag}`
+  );
+
+  try {
+    await registerCommands();
+    console.log("Commands registered.");
+  } catch (error) {
+    console.error(
+      "Command registration error:",
+      error
     );
-
-    try {
-      await registerCommands();
-
-      console.log(
-        "Commands registered."
-      );
-    } catch (error) {
-      console.error(
-        "Command registration error:",
-        error
-      );
-    }
-
-    try {
-      await updateLeaderboard();
-    } catch (error) {
-      console.error(
-        "Leaderboard update error:",
-        error
-      );
-    }
   }
-);
+
+  try {
+    await updateLeaderboard();
+  } catch (error) {
+    console.error(
+      "Leaderboard update error:",
+      error
+    );
+  }
+});
 
 client.on(
   "interactionCreate",
   async interaction => {
     try {
-      if (
-        interaction.isChatInputCommand()
-      ) {
-        if (
-          interaction.commandName ===
-          "setup"
-        ) {
+      if (interaction.isChatInputCommand()) {
+        if (interaction.commandName === "setup") {
           await interaction.channel.send(
             mainPanel()
           );
@@ -732,16 +554,13 @@ client.on(
         }
 
         if (
-          interaction.commandName ===
-            "leaderboard" ||
-          interaction.commandName ===
-            "lb"
+          interaction.commandName === "leaderboard" ||
+          interaction.commandName === "lb"
         ) {
           leaderboardChannelId =
             interaction.channel.id;
 
-          leaderboardMessageId =
-            null;
+          leaderboardMessageId = null;
 
           saveLeaderboard();
 
@@ -766,18 +585,16 @@ client.on(
 
       if (
         interaction.isButton() &&
-        interaction.customId ===
-          "find"
+        interaction.customId === "find"
       ) {
-        const userId =
-          interaction.user.id;
+        const userId = interaction.user.id;
 
-        if (
-          getActiveMatch(
-            interaction.guild,
-            userId
-          )
-        ) {
+        const activeMatch = getActiveMatch(
+          interaction.guild,
+          userId
+        );
+
+        if (activeMatch) {
           return interaction.reply(
             privateReply(
               "❌ أنت داخل مباراة حاليًا."
@@ -785,13 +602,9 @@ client.on(
           );
         }
 
-        removeFromQueue(
-          userId
-        );
+        removeFromQueue(userId);
 
-        if (
-          queue.length === 0
-        ) {
+        if (queue.length === 0) {
           queue.push(userId);
 
           return interaction.reply(
@@ -803,16 +616,10 @@ client.on(
 
         let opponentId = null;
 
-        while (
-          queue.length > 0
-        ) {
-          const candidate =
-            queue.shift();
+        while (queue.length > 0) {
+          const candidate = queue.shift();
 
-          if (
-            candidate ===
-            userId
-          ) {
+          if (candidate === userId) {
             continue;
           }
 
@@ -822,9 +629,7 @@ client.on(
               candidate
             )
           ) {
-            opponentId =
-              candidate;
-
+            opponentId = candidate;
             break;
           }
         }
@@ -840,8 +645,7 @@ client.on(
         }
 
         await interaction.deferReply({
-          flags:
-            MessageFlags.Ephemeral
+          flags: MessageFlags.Ephemeral
         });
 
         try {
@@ -855,12 +659,11 @@ client.on(
               userId
             );
 
-          const channel =
-            await createMatch(
-              interaction.guild,
-              opponent.user,
-              player.user
-            );
+          const channel = await createMatch(
+            interaction.guild,
+            opponent.user,
+            player.user
+          );
 
           await interaction.editReply({
             content:
@@ -872,9 +675,7 @@ client.on(
             error
           );
 
-          queue.unshift(
-            opponentId
-          );
+          queue.unshift(opponentId);
 
           await interaction.editReply({
             content:
@@ -887,13 +688,11 @@ client.on(
 
       if (
         interaction.isButton() &&
-        interaction.customId ===
-          "leave"
+        interaction.customId === "leave"
       ) {
-        const index =
-          queue.indexOf(
-            interaction.user.id
-          );
+        const index = queue.indexOf(
+          interaction.user.id
+        );
 
         if (index === -1) {
           return interaction.reply(
@@ -903,10 +702,7 @@ client.on(
           );
         }
 
-        queue.splice(
-          index,
-          1
-        );
+        queue.splice(index, 1);
 
         return interaction.reply(
           privateReply(
@@ -917,9 +713,7 @@ client.on(
 
       if (
         interaction.isButton() &&
-        interaction.customId.startsWith(
-          "game_"
-        )
+        interaction.customId.startsWith("game_")
       ) {
         const channelId =
           interaction.customId.replace(
@@ -927,10 +721,7 @@ client.on(
             ""
           );
 
-        const match =
-          matches.get(
-            channelId
-          );
+        const match = matches.get(channelId);
 
         if (!match) {
           return interaction.reply(
@@ -941,10 +732,8 @@ client.on(
         }
 
         const isPlayer =
-          interaction.user.id ===
-            match.player1 ||
-          interaction.user.id ===
-            match.player2;
+          interaction.user.id === match.player1 ||
+          interaction.user.id === match.player2;
 
         if (!isPlayer) {
           return interaction.reply(
@@ -954,23 +743,16 @@ client.on(
           );
         }
 
-        const modal =
-          new ModalBuilder()
-            .setCustomId(
-              `game_modal_${channelId}`
-            )
-            .setTitle(
-              "دخول القيم"
-            );
+        const modal = new ModalBuilder()
+          .setCustomId(
+            `game_modal_${channelId}`
+          )
+          .setTitle("دخول القيم");
 
         const linkInput =
           new TextInputBuilder()
-            .setCustomId(
-              "game_link"
-            )
-            .setLabel(
-              "رابط دخول القيم"
-            )
+            .setCustomId("game_link")
+            .setLabel("رابط دخول القيم")
             .setPlaceholder(
               "الصق رابط Roblox هنا"
             )
@@ -980,15 +762,12 @@ client.on(
             .setRequired(true);
 
         modal.addComponents(
-          new ActionRowBuilder()
-            .addComponents(
-              linkInput
-            )
+          new ActionRowBuilder().addComponents(
+            linkInput
+          )
         );
 
-        await interaction.showModal(
-          modal
-        );
+        await interaction.showModal(modal);
 
         return;
       }
@@ -1005,10 +784,7 @@ client.on(
             ""
           );
 
-        const match =
-          matches.get(
-            channelId
-          );
+        const match = matches.get(channelId);
 
         if (!match) {
           return interaction.reply(
@@ -1020,16 +796,10 @@ client.on(
 
         const link =
           interaction.fields
-            .getTextInputValue(
-              "game_link"
-            )
+            .getTextInputValue("game_link")
             .trim();
 
-        if (
-          !validRobloxLink(
-            link
-          )
-        ) {
+        if (!validRobloxLink(link)) {
           return interaction.reply(
             privateReply(
               "❌ الرابط غير صالح. استخدم رابط Roblox صحيح."
@@ -1058,9 +828,7 @@ client.on(
 
       if (
         interaction.isButton() &&
-        interaction.customId.startsWith(
-          "result_"
-        )
+        interaction.customId.startsWith("result_")
       ) {
         const channelId =
           interaction.customId.replace(
@@ -1068,10 +836,7 @@ client.on(
             ""
           );
 
-        const match =
-          matches.get(
-            channelId
-          );
+        const match = matches.get(channelId);
 
         if (!match) {
           return interaction.reply(
@@ -1082,10 +847,8 @@ client.on(
         }
 
         const isPlayer =
-          interaction.user.id ===
-            match.player1 ||
-          interaction.user.id ===
-            match.player2;
+          interaction.user.id === match.player1 ||
+          interaction.user.id === match.player2;
 
         if (!isPlayer) {
           return interaction.reply(
@@ -1095,9 +858,7 @@ client.on(
           );
         }
 
-        if (
-          match.resultSubmitted
-        ) {
+        if (match.resultSubmitted) {
           return interaction.reply(
             privateReply(
               "❌ تم تسجيل نتيجة هذه المباراة مسبقًا."
@@ -1105,26 +866,19 @@ client.on(
           );
         }
 
-        const modal =
-          new ModalBuilder()
-            .setCustomId(
-              `result_modal_${channelId}`
-            )
-            .setTitle(
-              "إرسال نتيجة المباراة"
-            );
+        const modal = new ModalBuilder()
+          .setCustomId(
+            `result_modal_${channelId}`
+          )
+          .setTitle(
+            "إرسال نتيجة المباراة"
+          );
 
         const scoreInput =
           new TextInputBuilder()
-            .setCustomId(
-              "score"
-            )
-            .setLabel(
-              "اكتب النتيجة"
-            )
-            .setPlaceholder(
-              "مثال: 5-2"
-            )
+            .setCustomId("score")
+            .setLabel("النتيجة")
+            .setPlaceholder("مثال: 5-2")
             .setStyle(
               TextInputStyle.Short
             )
@@ -1133,15 +887,12 @@ client.on(
             .setMaxLength(20);
 
         modal.addComponents(
-          new ActionRowBuilder()
-            .addComponents(
-              scoreInput
-            )
+          new ActionRowBuilder().addComponents(
+            scoreInput
+          )
         );
 
-        await interaction.showModal(
-          modal
-        );
+        await interaction.showModal(modal);
 
         return;
       }
@@ -1158,10 +909,7 @@ client.on(
             ""
           );
 
-        const match =
-          matches.get(
-            channelId
-          );
+        const match = matches.get(channelId);
 
         if (!match) {
           return interaction.reply(
@@ -1172,10 +920,8 @@ client.on(
         }
 
         const isPlayer =
-          interaction.user.id ===
-            match.player1 ||
-          interaction.user.id ===
-            match.player2;
+          interaction.user.id === match.player1 ||
+          interaction.user.id === match.player2;
 
         if (!isPlayer) {
           return interaction.reply(
@@ -1185,9 +931,7 @@ client.on(
           );
         }
 
-        if (
-          match.resultSubmitted
-        ) {
+        if (match.resultSubmitted) {
           return interaction.reply(
             privateReply(
               "❌ تم تسجيل نتيجة هذه المباراة مسبقًا."
@@ -1197,18 +941,15 @@ client.on(
 
         const value =
           interaction.fields
-            .getTextInputValue(
-              "score"
-            )
+            .getTextInputValue("score")
             .trim();
 
-        const score =
-          parseScore(value);
+        const score = parseScore(value);
 
         if (!score) {
           return interaction.reply(
             privateReply(
-              "❌ اكتب النتيجة بهذا الشكل: `5-2`"
+              "❌ النتيجة غير صحيحة. اكتبها مثل 5-2 أو 5:2."
             )
           );
         }
@@ -1248,8 +989,7 @@ client.on(
             error
           );
 
-          match.resultSubmitted =
-            false;
+          match.resultSubmitted = false;
 
           await interaction.editReply({
             content:
@@ -1262,9 +1002,7 @@ client.on(
 
       if (
         interaction.isButton() &&
-        interaction.customId.startsWith(
-          "admin_"
-        )
+        interaction.customId.startsWith("admin_")
       ) {
         const channelId =
           interaction.customId.replace(
@@ -1272,10 +1010,7 @@ client.on(
             ""
           );
 
-        const match =
-          matches.get(
-            channelId
-          );
+        const match = matches.get(channelId);
 
         if (!match) {
           return interaction.reply(
@@ -1286,10 +1021,8 @@ client.on(
         }
 
         const isPlayer =
-          interaction.user.id ===
-            match.player1 ||
-          interaction.user.id ===
-            match.player2;
+          interaction.user.id === match.player1 ||
+          interaction.user.id === match.player2;
 
         if (!isPlayer) {
           return interaction.reply(
@@ -1299,9 +1032,7 @@ client.on(
           );
         }
 
-        if (
-          !DEVELOPMENT_ROLE_ID
-        ) {
+        if (!DEVELOPMENT_ROLE_ID) {
           return interaction.reply(
             privateReply(
               "❌ DEVELOPMENT_ROLE_ID غير موجود."
@@ -1325,9 +1056,7 @@ client.on(
 
       if (
         interaction.isButton() &&
-        interaction.customId.startsWith(
-          "exit_"
-        )
+        interaction.customId.startsWith("exit_")
       ) {
         const channelId =
           interaction.customId.replace(
@@ -1335,10 +1064,7 @@ client.on(
             ""
           );
 
-        const match =
-          matches.get(
-            channelId
-          );
+        const match = matches.get(channelId);
 
         if (!match) {
           return interaction.reply(
@@ -1349,20 +1075,15 @@ client.on(
         }
 
         const isPlayer =
-          interaction.user.id ===
-            match.player1 ||
-          interaction.user.id ===
-            match.player2;
+          interaction.user.id === match.player1 ||
+          interaction.user.id === match.player2;
 
         const isAdmin =
           interaction.memberPermissions?.has(
             PermissionFlagsBits.Administrator
           );
 
-        if (
-          !isPlayer &&
-          !isAdmin
-        ) {
+        if (!isPlayer && !isAdmin) {
           return interaction.reply(
             privateReply(
               "❌ ما عندك صلاحية."
@@ -1371,9 +1092,7 @@ client.on(
         }
 
         if (
-          closingMatches.has(
-            channelId
-          )
+          closingMatches.has(channelId)
         ) {
           return interaction.reply(
             privateReply(
@@ -1382,81 +1101,63 @@ client.on(
           );
         }
 
-        closingMatches.add(
-          channelId
-        );
+        closingMatches.add(channelId);
+
+        const player1 = match.player1;
+        const player2 = match.player2;
 
         let seconds = 10;
 
         await interaction.reply({
           embeds: [
             new EmbedBuilder()
-              .setTitle(
-                "🔒 MATCH CLOSING"
-              )
+              .setTitle("🔒 MATCH CLOSING")
               .setDescription(
                 `سيتم إغلاق الروم خلال **${seconds} ثواني**.`
               )
           ]
         });
 
-        const timer =
-          setInterval(
-            async () => {
-              seconds--;
+        const timer = setInterval(
+          async () => {
+            seconds--;
 
-              if (
-                seconds <= 0
-              ) {
-                clearInterval(
-                  timer
-                );
+            if (seconds <= 0) {
+              clearInterval(timer);
 
-                matches.delete(
-                  channelId
-                );
+              matches.delete(channelId);
+              closingMatches.delete(channelId);
 
-                closingMatches.delete(
-                  channelId
-                );
-
-                removeFromQueue(
-                  match.player1
-                );
-
-                removeFromQueue(
-                  match.player2
-                );
-
-                try {
-                  await interaction.channel.delete(
-                    "Time Bomb match closed"
-                  );
-                } catch {}
-
-                return;
-              }
+              removeFromQueue(player1);
+              removeFromQueue(player2);
 
               try {
-                await interaction.editReply({
-                  embeds: [
-                    new EmbedBuilder()
-                      .setTitle(
-                        "🔒 MATCH CLOSING"
-                      )
-                      .setDescription(
-                        `سيتم إغلاق الروم خلال **${seconds} ثواني**.`
-                      )
-                  ]
-                });
-              } catch {
-                clearInterval(
-                  timer
+                await interaction.channel.delete(
+                  "Time Bomb match closed"
                 );
-              }
-            },
-            1000
-          );
+              } catch {}
+
+              return;
+            }
+
+            try {
+              await interaction.editReply({
+                embeds: [
+                  new EmbedBuilder()
+                    .setTitle(
+                      "🔒 MATCH CLOSING"
+                    )
+                    .setDescription(
+                      `سيتم إغلاق الروم خلال **${seconds} ثواني**.`
+                    )
+                ]
+              });
+            } catch {
+              clearInterval(timer);
+            }
+          },
+          1000
+        );
 
         return;
       }

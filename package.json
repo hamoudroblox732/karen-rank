@@ -1,0 +1,12 @@
+{
+  "name": "karen-rank",
+  "version": "1.0.0",
+  "description": "Karen Rank Time Bomb 1v1 Discord Bot",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.27.0"
+  }
+}

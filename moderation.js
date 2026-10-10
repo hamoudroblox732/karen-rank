@@ -1,3 +1,4 @@
+
 const fs = require("fs");
 const path = require("path");
 const {
@@ -8,15 +9,17 @@ const {
   ButtonStyle,
   PermissionsBitField
 } = require("discord.js");
+
 const warningsFile = path.join(__dirname, "warnings.json");
+
 function loadWarnings() {
   try {
     if (!fs.existsSync(warningsFile)) {
       fs.writeFileSync(warningsFile, "{}", "utf8");
     }
-    const data = JSON.parse(
-      fs.readFileSync(warningsFile, "utf8")
-    );
+
+    const data = JSON.parse(fs.readFileSync(warningsFile, "utf8"));
+
     return data && typeof data === "object" && !Array.isArray(data)
       ? data
       : {};
@@ -25,22 +28,28 @@ function loadWarnings() {
     return {};
   }
 }
+
 let warnings = loadWarnings();
+
 function saveWarnings() {
   const temporaryFile = `${warningsFile}.tmp`;
+
   fs.writeFileSync(
     temporaryFile,
     JSON.stringify(warnings, null, 2),
     "utf8"
   );
+
   fs.renameSync(temporaryFile, warningsFile);
 }
+
 function isOwner(interaction) {
   return Boolean(
     interaction.guild &&
     interaction.user.id === interaction.guild.ownerId
   );
 }
+
 function canModerate(interaction) {
   return Boolean(
     interaction.guild &&
@@ -52,15 +61,37 @@ function canModerate(interaction) {
     )
   );
 }
+
 function getMemberWarnings(guildId, userId) {
   if (!warnings[guildId]) {
     warnings[guildId] = {};
   }
+
   if (!Array.isArray(warnings[guildId][userId])) {
     warnings[guildId][userId] = [];
   }
+
   return warnings[guildId][userId];
 }
+
+function parseTarget(value) {
+  const input = value.trim();
+
+  if (input.toLowerCase() === "all") {
+    return { all: true };
+  }
+
+  const mentionMatch = input.match(/^<@!?(\d+)>$/);
+  const idMatch = input.match(/^\d{17,20}$/);
+  const userId = mentionMatch?.[1] || (idMatch ? input : null);
+
+  if (!userId) {
+    return null;
+  }
+
+  return { all: false, userId };
+}
+
 const commands = [
   new SlashCommandBuilder()
     .setName("warn")
@@ -78,22 +109,18 @@ const commands = [
         .setRequired(true)
         .setMaxLength(1000)
     ),
+
   new SlashCommandBuilder()
     .setName("warnr")
-    .setDescription("Remove warnings")
-    .addUserOption(option =>
+    .setDescription("Remove warnings from a member or everyone")
+    .addStringOption(option =>
       option
-        .setName("mention")
-        .setDescription("Member whose warnings to remove")
-        .setRequired(false)
-    )
-    .addBooleanOption(option =>
-      option
-        .setName("all")
-        .setDescription("Remove warnings from everyone")
-        .setRequired(false)
+        .setName("target")
+        .setDescription("Mention a member or type all")
+        .setRequired(true)
     )
 ].map(command => command.toJSON());
+
 async function handleInteraction(interaction) {
   if (
     interaction.isChatInputCommand() &&
@@ -106,9 +133,11 @@ async function handleInteraction(interaction) {
       });
       return true;
     }
+
     if (interaction.commandName === "warn") {
       const target = interaction.options.getUser("mention", true);
       const reason = interaction.options.getString("reason", true);
+
       if (
         target.bot ||
         target.id === interaction.user.id ||
@@ -120,9 +149,11 @@ async function handleInteraction(interaction) {
         });
         return true;
       }
+
       const member = await interaction.guild.members
         .fetch(target.id)
         .catch(() => null);
+
       if (!member) {
         await interaction.reply({
           content: "❌ العضو غير موجود في السيرفر.",
@@ -130,27 +161,32 @@ async function handleInteraction(interaction) {
         });
         return true;
       }
+
       const memberWarnings = getMemberWarnings(
         interaction.guild.id,
         target.id
       );
+
       memberWarnings.push({
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         reason,
         moderatorId: interaction.user.id,
         timestamp: new Date().toISOString()
       });
+
       try {
         saveWarnings();
       } catch (error) {
         memberWarnings.pop();
         console.error("WARNING SAVE ERROR:", error);
+
         await interaction.reply({
           content: "❌ تعذر حفظ التحذير.",
           ephemeral: true
         });
         return true;
       }
+
       const embed = new EmbedBuilder()
         .setTitle("MEMBER WARNING")
         .setColor(0xed4245)
@@ -161,32 +197,37 @@ async function handleInteraction(interaction) {
           `**Total warnings:** ${memberWarnings.length}`
         )
         .setTimestamp();
+
       await interaction.reply({
         embeds: [embed],
         allowedMentions: {
           users: [target.id, interaction.user.id]
         }
       });
+
       return true;
     }
-    const target = interaction.options.getUser("mention");
-    const removeAll = interaction.options.getBoolean("all") ?? false;
-    if (Boolean(target) === removeAll) {
+
+    const input = interaction.options.getString("target", true);
+    const parsed = parseTarget(input);
+
+    if (!parsed) {
       await interaction.reply({
         content:
-          "❌ اختر `mention` لعضو محدد، أو اجعل `all` = `True` لمسح الكل.",
+          "❌ اكتب منشن عضو صحيح مثل `@member` أو اكتب `all` لمسح الكل.",
         ephemeral: true
       });
       return true;
     }
+
     const guildId = interaction.guild.id;
-    if (removeAll) {
-      const total = Object.values(warnings[guildId] || {})
-        .reduce(
-          (sum, list) =>
-            sum + (Array.isArray(list) ? list.length : 0),
-          0
-        );
+
+    if (parsed.all) {
+      const total = Object.values(warnings[guildId] || {}).reduce(
+        (sum, list) => sum + (Array.isArray(list) ? list.length : 0),
+        0
+      );
+
       if (total === 0) {
         await interaction.reply({
           content: "✅ ما فيه تحذيرات محفوظة.",
@@ -194,64 +235,99 @@ async function handleInteraction(interaction) {
         });
         return true;
       }
+
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId(`warnr_confirm_${interaction.user.id}`)
           .setLabel("تأكيد مسح الكل")
           .setStyle(ButtonStyle.Danger),
+
         new ButtonBuilder()
           .setCustomId(`warnr_cancel_${interaction.user.id}`)
           .setLabel("إلغاء")
           .setStyle(ButtonStyle.Secondary)
       );
+
       await interaction.reply({
         content:
           `⚠️ **تأكيد مسح جميع التحذيرات**\n` +
           `عدد التحذيرات: **${total}**\n` +
-          `لا يمكن التراجع عن هذا الإجراء.`,
+          "لا يمكن التراجع عن هذا الإجراء.",
         components: [row],
+        ephemeral: true
+      });
+
+      return true;
+    }
+
+    const targetId = parsed.userId;
+
+    if (targetId === interaction.user.id) {
+      await interaction.reply({
+        content: "❌ لا يمكنك إزالة التحذيرات بهذه الطريقة عن نفسك.",
         ephemeral: true
       });
       return true;
     }
-    if (target.bot) {
+
+    const member = await interaction.guild.members
+      .fetch(targetId)
+      .catch(() => null);
+
+    if (!member) {
+      await interaction.reply({
+        content: "❌ ما لقيت العضو. تأكد من المنشن وأنه موجود في السيرفر.",
+        ephemeral: true
+      });
+      return true;
+    }
+
+    if (member.user.bot) {
       await interaction.reply({
         content: "❌ ما تقدر تمسح تحذيرات بوت.",
         ephemeral: true
       });
       return true;
     }
-    const memberWarnings = getMemberWarnings(guildId, target.id);
+
+    const memberWarnings = getMemberWarnings(guildId, targetId);
     const removed = memberWarnings.length;
+
     if (removed === 0) {
       await interaction.reply({
-        content: `ℹ️ <@${target.id}> ما عنده تحذيرات.`,
+        content: `ℹ️ <@${targetId}> ما عنده تحذيرات.`,
         ephemeral: true,
         allowedMentions: { users: [] }
       });
       return true;
     }
-    warnings[guildId][target.id] = [];
+
+    warnings[guildId][targetId] = [];
+
     try {
       saveWarnings();
     } catch (error) {
-      warnings[guildId][target.id] = memberWarnings;
+      warnings[guildId][targetId] = memberWarnings;
       console.error("WARNING REMOVAL ERROR:", error);
+
       await interaction.reply({
         content: "❌ تعذر حفظ التغييرات.",
         ephemeral: true
       });
       return true;
     }
+
     await interaction.reply({
       content:
-        `✅ تمت إزالة تحذيرات <@${target.id}>\n` +
+        `✅ تمت إزالة تحذيرات <@${targetId}>\n` +
         `عدد التحذيرات المحذوفة: **${removed}**.`,
       ephemeral: true,
       allowedMentions: { users: [] }
     });
+
     return true;
   }
+
   if (
     interaction.isButton() &&
     (
@@ -262,6 +338,7 @@ async function handleInteraction(interaction) {
     const confirming = interaction.customId.startsWith("warnr_confirm_");
     const prefix = confirming ? "warnr_confirm_" : "warnr_cancel_";
     const ownerId = interaction.customId.slice(prefix.length);
+
     if (interaction.user.id !== ownerId) {
       await interaction.reply({
         content: "❌ هذا التأكيد مخصص للشخص الذي طلبه.",
@@ -269,6 +346,7 @@ async function handleInteraction(interaction) {
       });
       return true;
     }
+
     if (!canModerate(interaction)) {
       await interaction.reply({
         content: "❌ ما عندك صلاحية تنفيذ هذا الإجراء.",
@@ -276,6 +354,7 @@ async function handleInteraction(interaction) {
       });
       return true;
     }
+
     if (!confirming) {
       await interaction.update({
         content: "✅ تم إلغاء العملية.",
@@ -283,33 +362,41 @@ async function handleInteraction(interaction) {
       });
       return true;
     }
+
     const guildId = interaction.guild.id;
     const previousWarnings = warnings[guildId] || {};
+
     const removed = Object.values(previousWarnings).reduce(
-      (sum, list) =>
-        sum + (Array.isArray(list) ? list.length : 0),
+      (sum, list) => sum + (Array.isArray(list) ? list.length : 0),
       0
     );
+
     warnings[guildId] = {};
+
     try {
       saveWarnings();
     } catch (error) {
       warnings[guildId] = previousWarnings;
       console.error("CLEAR WARNINGS ERROR:", error);
+
       await interaction.update({
         content: "❌ تعذر حفظ التغييرات.",
         components: []
       });
       return true;
     }
+
     await interaction.update({
       content: `✅ تم مسح جميع التحذيرات. العدد: **${removed}**.`,
       components: []
     });
+
     return true;
   }
+
   return false;
 }
+
 module.exports = {
   commands,
   handleInteraction

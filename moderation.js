@@ -43,18 +43,11 @@ function saveWarnings() {
   fs.renameSync(temporaryFile, warningsFile);
 }
 
-function isOwner(interaction) {
-  return Boolean(
-    interaction.guild &&
-    interaction.user.id === interaction.guild.ownerId
-  );
-}
-
 function canModerate(interaction) {
   return Boolean(
     interaction.guild &&
     (
-      isOwner(interaction) ||
+      interaction.user.id === interaction.guild.ownerId ||
       interaction.memberPermissions?.has(
         PermissionsBitField.Flags.Administrator
       )
@@ -63,10 +56,7 @@ function canModerate(interaction) {
 }
 
 function getMemberWarnings(guildId, userId) {
-  if (!warnings[guildId]) {
-    warnings[guildId] = {};
-  }
-
+  if (!warnings[guildId]) warnings[guildId] = {};
   if (!Array.isArray(warnings[guildId][userId])) {
     warnings[guildId][userId] = [];
   }
@@ -74,22 +64,18 @@ function getMemberWarnings(guildId, userId) {
   return warnings[guildId][userId];
 }
 
-function parseTarget(value) {
+function parseMention(value) {
   const input = value.trim();
 
   if (input.toLowerCase() === "all") {
     return { all: true };
   }
 
-  const mentionMatch = input.match(/^<@!?(\d+)>$/);
+  const match = input.match(/^<@!?(\d+)>$/);
   const idMatch = input.match(/^\d{17,20}$/);
-  const userId = mentionMatch?.[1] || (idMatch ? input : null);
+  const userId = match?.[1] || (idMatch ? input : null);
 
-  if (!userId) {
-    return null;
-  }
-
-  return { all: false, userId };
+  return userId ? { all: false, userId } : null;
 }
 
 const commands = [
@@ -115,7 +101,7 @@ const commands = [
     .setDescription("Remove warnings from a member or everyone")
     .addStringOption(option =>
       option
-        .setName("target")
+        .setName("mention")
         .setDescription("Mention a member or type all")
         .setRequired(true)
     )
@@ -200,21 +186,18 @@ async function handleInteraction(interaction) {
 
       await interaction.reply({
         embeds: [embed],
-        allowedMentions: {
-          users: [target.id, interaction.user.id]
-        }
+        allowedMentions: { users: [target.id, interaction.user.id] }
       });
 
       return true;
     }
 
-    const input = interaction.options.getString("target", true);
-    const parsed = parseTarget(input);
+    const input = interaction.options.getString("mention", true);
+    const parsed = parseMention(input);
 
     if (!parsed) {
       await interaction.reply({
-        content:
-          "❌ اكتب منشن عضو صحيح مثل `@member` أو اكتب `all` لمسح الكل.",
+        content: "❌ اكتب منشن عضو صحيح أو اكتب `all` لمسح تحذيرات الجميع.",
         ephemeral: true
       });
       return true;
@@ -241,7 +224,6 @@ async function handleInteraction(interaction) {
           .setCustomId(`warnr_confirm_${interaction.user.id}`)
           .setLabel("تأكيد مسح الكل")
           .setStyle(ButtonStyle.Danger),
-
         new ButtonBuilder()
           .setCustomId(`warnr_cancel_${interaction.user.id}`)
           .setLabel("إلغاء")
@@ -264,7 +246,7 @@ async function handleInteraction(interaction) {
 
     if (targetId === interaction.user.id) {
       await interaction.reply({
-        content: "❌ لا يمكنك إزالة التحذيرات بهذه الطريقة عن نفسك.",
+        content: "❌ لا يمكنك إزالة تحذيراتك بهذه الطريقة.",
         ephemeral: true
       });
       return true;
@@ -296,8 +278,7 @@ async function handleInteraction(interaction) {
     if (removed === 0) {
       await interaction.reply({
         content: `ℹ️ <@${targetId}> ما عنده تحذيرات.`,
-        ephemeral: true,
-        allowedMentions: { users: [] }
+        ephemeral: true
       });
       return true;
     }
@@ -321,8 +302,7 @@ async function handleInteraction(interaction) {
       content:
         `✅ تمت إزالة تحذيرات <@${targetId}>\n` +
         `عدد التحذيرات المحذوفة: **${removed}**.`,
-      ephemeral: true,
-      allowedMentions: { users: [] }
+      ephemeral: true
     });
 
     return true;

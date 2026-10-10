@@ -15,6 +15,7 @@ const {
 } = require("discord.js");
 
 const fs = require("fs");
+const moderation = require("./moderation.js");
 
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
@@ -57,7 +58,7 @@ function saveLeaderboard() {
 }
 
 function isOwner(interaction) {
-  return (
+  return Boolean(
     interaction.guild &&
     interaction.user.id === interaction.guild.ownerId
   );
@@ -92,13 +93,10 @@ function parseScore(input) {
   const player2Score = Number(match[2]);
 
   if (
-    !Number.isInteger(player1Score) ||
-    !Number.isInteger(player2Score)
+    !Number.isSafeInteger(player1Score) ||
+    !Number.isSafeInteger(player2Score) ||
+    player1Score === player2Score
   ) {
-    return null;
-  }
-
-  if (player1Score === player2Score) {
     return null;
   }
 
@@ -119,27 +117,15 @@ function ensurePlayer(userId) {
     };
   }
 
-  if (typeof leaderboard[userId].points !== "number") {
-    leaderboard[userId].points = 0;
-  }
+  const player = leaderboard[userId];
 
-  if (typeof leaderboard[userId].wins !== "number") {
-    leaderboard[userId].wins = 0;
-  }
+  if (typeof player.points !== "number") player.points = 0;
+  if (typeof player.wins !== "number") player.wins = 0;
+  if (typeof player.losses !== "number") player.losses = 0;
+  if (typeof player.roundsWon !== "number") player.roundsWon = 0;
+  if (typeof player.roundsLost !== "number") player.roundsLost = 0;
 
-  if (typeof leaderboard[userId].losses !== "number") {
-    leaderboard[userId].losses = 0;
-  }
-
-  if (typeof leaderboard[userId].roundsWon !== "number") {
-    leaderboard[userId].roundsWon = 0;
-  }
-
-  if (typeof leaderboard[userId].roundsLost !== "number") {
-    leaderboard[userId].roundsLost = 0;
-  }
-
-  return leaderboard[userId];
+  return player;
 }
 
 function getLeaderboardSorted() {
@@ -176,7 +162,7 @@ function createLeaderboardEmbed() {
 
   if (sorted.length === 0) {
     description =
-      "## 🏆 No Results Yet\n\n" +
+      "## No Results Yet\n\n" +
       "No matches have been completed yet.";
   } else {
     description = sorted
@@ -204,7 +190,7 @@ function createLeaderboardEmbed() {
   }
 
   return new EmbedBuilder()
-    .setTitle("🏆 KAREN RANK")
+    .setTitle("KAREN RANK")
     .setDescription(
       "### TIME BOMB 1V1 LEADERBOARD\n\n" +
       description
@@ -218,7 +204,7 @@ function createLeaderboardEmbed() {
 
 function createWaitingEmbed() {
   return new EmbedBuilder()
-    .setTitle("💣 KAREN RANK")
+    .setTitle("KAREN RANK")
     .setDescription(
       "### TIME BOMB 1V1\n\n" +
       "━━━━━━━━━━━━━━━━━━━━\n\n" +
@@ -281,7 +267,7 @@ function matchControls() {
 
 function createMatchEmbed(match) {
   return new EmbedBuilder()
-    .setTitle("💣 TIME BOMB 1V1")
+    .setTitle("TIME BOMB 1V1")
     .setDescription(
       "### ⚔️ MATCH ROOM\n\n" +
       "━━━━━━━━━━━━━━━━━━━━\n\n" +
@@ -310,7 +296,7 @@ function createResultEmbed(
   loser
 ) {
   return new EmbedBuilder()
-    .setTitle("🏆 MATCH COMPLETED")
+    .setTitle("MATCH COMPLETED")
     .setDescription(
       "### TIME BOMB 1V1 RESULT\n\n" +
       "━━━━━━━━━━━━━━━━━━━━\n\n" +
@@ -334,7 +320,7 @@ function createResultEmbed(
 
 function createClosingEmbed(seconds) {
   return new EmbedBuilder()
-    .setTitle("🔒 MATCH ROOM CLOSING")
+    .setTitle("MATCH ROOM CLOSING")
     .setDescription(
       "### ROOM WILL BE DELETED\n\n" +
       "━━━━━━━━━━━━━━━━━━━━\n\n" +
@@ -359,41 +345,36 @@ async function createMatch(player1, player2) {
       .replace(/[^a-z0-9-]/g, "-")
       .slice(0, 90);
 
+  const permissionOverwrites = [
+    {
+      id: guild.roles.everyone.id,
+      deny: [PermissionsBitField.Flags.ViewChannel]
+    },
+    ...[player1.id, player2.id].map(id => ({
+      id,
+      allow: [
+        PermissionsBitField.Flags.ViewChannel,
+        PermissionsBitField.Flags.SendMessages,
+        PermissionsBitField.Flags.ReadMessageHistory
+      ]
+    }))
+  ];
+
+  if (DEVELOPMENT_ROLE_ID) {
+    permissionOverwrites.push({
+      id: DEVELOPMENT_ROLE_ID,
+      allow: [
+        PermissionsBitField.Flags.ViewChannel,
+        PermissionsBitField.Flags.SendMessages,
+        PermissionsBitField.Flags.ReadMessageHistory
+      ]
+    });
+  }
+
   const channel = await guild.channels.create({
     name: channelName,
     type: ChannelType.GuildText,
-    permissionOverwrites: [
-      {
-        id: guild.roles.everyone.id,
-        deny: [
-          PermissionsBitField.Flags.ViewChannel
-        ]
-      },
-      {
-        id: player1.id,
-        allow: [
-          PermissionsBitField.Flags.ViewChannel,
-          PermissionsBitField.Flags.SendMessages,
-          PermissionsBitField.Flags.ReadMessageHistory
-        ]
-      },
-      {
-        id: player2.id,
-        allow: [
-          PermissionsBitField.Flags.ViewChannel,
-          PermissionsBitField.Flags.SendMessages,
-          PermissionsBitField.Flags.ReadMessageHistory
-        ]
-      },
-      {
-        id: DEVELOPMENT_ROLE_ID,
-        allow: [
-          PermissionsBitField.Flags.ViewChannel,
-          PermissionsBitField.Flags.SendMessages,
-          PermissionsBitField.Flags.ReadMessageHistory
-        ]
-      }
-    ]
+    permissionOverwrites
   });
 
   const match = {
@@ -410,25 +391,20 @@ async function createMatch(player1, player2) {
   matches.set(channel.id, match);
 
   await channel.send({
-    content:
-      `<@${player1.id}> <@${player2.id}>`,
+    content: `<@${player1.id}> <@${player2.id}>`,
     embeds: [createMatchEmbed(match)],
-    ...matchControls()
+    ...matchControls(),
+    allowedMentions: {
+      users: [player1.id, player2.id]
+    }
   });
 
   return channel;
 }
 
-function recordResult(
-  match,
-  player1Score,
-  player2Score
-) {
-  const player1Id = match.player1.id;
-  const player2Id = match.player2.id;
-
-  const player1 = ensurePlayer(player1Id);
-  const player2 = ensurePlayer(player2Id);
+function recordResult(match, player1Score, player2Score) {
+  const player1 = ensurePlayer(match.player1.id);
+  const player2 = ensurePlayer(match.player2.id);
 
   player1.roundsWon += player1Score;
   player1.roundsLost += player2Score;
@@ -463,7 +439,7 @@ async function sendNewLeaderboardEmbed() {
       leaderboard._channelId
     );
 
-    if (!channel) {
+    if (!channel || !channel.isTextBased()) {
       return;
     }
 
@@ -471,10 +447,7 @@ async function sendNewLeaderboardEmbed() {
       embeds: [createLeaderboardEmbed()]
     });
   } catch (error) {
-    console.error(
-      "LEADERBOARD SEND ERROR:",
-      error
-    );
+    console.error("LEADERBOARD SEND ERROR:", error);
   }
 }
 
@@ -482,611 +455,451 @@ async function registerCommands() {
   const commands = [
     new SlashCommandBuilder()
       .setName("setup")
-      .setDescription(
-        "Create the Karen Rank matchmaking panel"
-      ),
+      .setDescription("Create the Karen Rank matchmaking panel"),
 
     new SlashCommandBuilder()
       .setName("lb")
-      .setDescription(
-        "Set this channel as the leaderboard channel"
-      ),
+      .setDescription("Set this channel as the leaderboard channel"),
 
     new SlashCommandBuilder()
       .setName("win")
-      .setDescription(
-        "Submit the result of the current match"
-      )
+      .setDescription("Submit the result of the current match")
       .addStringOption(option =>
         option
           .setName("score")
-          .setDescription(
-            "Enter the score, for example 5-1"
-          )
+          .setDescription("Enter the score, for example 5-1")
           .setRequired(true)
           .setMinLength(3)
           .setMaxLength(20)
       )
   ].map(command => command.toJSON());
 
-  await client.application.commands.set(
-    commands,
-    GUILD_ID
-  );
+  commands.push(...moderation.commands);
+
+  await client.application.commands.set(commands, GUILD_ID);
 
   console.log("Commands registered.");
 }
 
 client.once("clientReady", async () => {
-  console.log(
-    `Karen Rank online as ${client.user.tag}`
-  );
+  console.log(`Karen Rank online as ${client.user.tag}`);
 
   try {
     await registerCommands();
   } catch (error) {
-    console.error(
-      "COMMAND REGISTER ERROR:",
-      error
-    );
+    console.error("COMMAND REGISTER ERROR:", error);
   }
 });
 
-client.on(
-  "interactionCreate",
-  async interaction => {
-    try {
-      if (interaction.isChatInputCommand()) {
-        if (
-          interaction.commandName === "setup"
-        ) {
-          if (!isOwner(interaction)) {
-            await interaction.reply({
-              content:
-                "❌ هذا الأمر للـOwner فقط.",
-              ephemeral: true
-            });
+client.on("interactionCreate", async interaction => {
+  try {
+    const handledByModeration =
+      await moderation.handleInteraction(interaction);
 
-            return;
-          }
+    if (handledByModeration) {
+      return;
+    }
 
-          await interaction.reply(
-            mainPanel()
-          );
-
-          return;
-        }
-
-        if (
-          interaction.commandName === "lb"
-        ) {
-          if (!isOwner(interaction)) {
-            await interaction.reply({
-              content:
-                "❌ هذا الأمر للـOwner فقط.",
-              ephemeral: true
-            });
-
-            return;
-          }
-
-          leaderboard._channelId =
-            interaction.channel.id;
-
-          saveLeaderboard();
-
+    if (interaction.isChatInputCommand()) {
+      if (interaction.commandName === "setup") {
+        if (!isOwner(interaction)) {
           await interaction.reply({
-            content:
-              "✅ تم تعيين هذا الروم كروم الليدربورد.",
+            content: "❌ هذا الأمر للـOwner فقط.",
             ephemeral: true
           });
-
-          await interaction.channel.send({
-            embeds: [
-              createLeaderboardEmbed()
-            ]
-          });
-
           return;
         }
 
-        if (
-          interaction.commandName === "win"
-        ) {
-          const match =
-            matches.get(
-              interaction.channel.id
-            );
+        await interaction.reply(mainPanel());
+        return;
+      }
 
-          if (!match) {
-            await interaction.reply({
-              content:
-                "❌ هذا الأمر يعمل فقط داخل روم الماتش.",
-              ephemeral: true
-            });
+      if (interaction.commandName === "lb") {
+        if (!isOwner(interaction)) {
+          await interaction.reply({
+            content: "❌ هذا الأمر للـOwner فقط.",
+            ephemeral: true
+          });
+          return;
+        }
 
-            return;
-          }
+        leaderboard._channelId = interaction.channel.id;
+        saveLeaderboard();
 
-          const isPlayer =
-            interaction.user.id ===
-              match.player1.id ||
-            interaction.user.id ===
-              match.player2.id;
+        await interaction.reply({
+          content: "✅ تم تعيين هذا الروم كروم الليدربورد.",
+          ephemeral: true
+        });
 
-          if (!isPlayer) {
-            await interaction.reply({
-              content:
-                "❌ فقط لاعبي الماتش يقدرون يسجلون النتيجة.",
-              ephemeral: true
-            });
+        await interaction.channel.send({
+          embeds: [createLeaderboardEmbed()]
+        });
 
-            return;
-          }
+        return;
+      }
 
-          if (
-            submittedResults.has(
-              interaction.channel.id
-            )
-          ) {
-            await interaction.reply({
-              content:
-                "❌ تم تسجيل نتيجة هذا الماتش مسبقًا.",
-              ephemeral: true
-            });
+      if (interaction.commandName === "win") {
+        const match = matches.get(interaction.channel.id);
 
-            return;
-          }
+        if (!match) {
+          await interaction.reply({
+            content: "❌ هذا الأمر يعمل فقط داخل روم الماتش.",
+            ephemeral: true
+          });
+          return;
+        }
 
-          const score =
-            interaction.options.getString(
-              "score",
-              true
-            );
+        const isPlayer =
+          interaction.user.id === match.player1.id ||
+          interaction.user.id === match.player2.id;
 
-          const parsed =
-            parseScore(score);
+        if (!isPlayer) {
+          await interaction.reply({
+            content: "❌ فقط لاعبي الماتش يقدرون يسجلون النتيجة.",
+            ephemeral: true
+          });
+          return;
+        }
 
-          if (!parsed) {
-            await interaction.reply({
-              content:
-                "❌ النتيجة غير صحيحة. اكتبها مثل `5-1`.",
-              ephemeral: true
-            });
+        if (submittedResults.has(interaction.channel.id)) {
+          await interaction.reply({
+            content: "❌ تم تسجيل نتيجة هذا الماتش مسبقًا.",
+            ephemeral: true
+          });
+          return;
+        }
 
-            return;
-          }
+        const score = interaction.options.getString("score", true);
+        const parsed = parseScore(score);
 
-          submittedResults.add(
-            interaction.channel.id
-          );
+        if (!parsed) {
+          await interaction.reply({
+            content: "❌ النتيجة غير صحيحة. اكتبها مثل `5-1`.",
+            ephemeral: true
+          });
+          return;
+        }
 
+        submittedResults.add(interaction.channel.id);
+
+        try {
           recordResult(
             match,
             parsed.player1Score,
             parsed.player2Score
           );
-
-          const player1Won =
-            parsed.player1Score >
-            parsed.player2Score;
-
-          const winner = player1Won
-            ? match.player1
-            : match.player2;
-
-          const loser = player1Won
-            ? match.player2
-            : match.player1;
+        } catch (error) {
+          submittedResults.delete(interaction.channel.id);
+          console.error("RESULT SAVE ERROR:", error);
 
           await interaction.reply({
-            embeds: [
-              createResultEmbed(
-                match,
-                parsed.player1Score,
-                parsed.player2Score,
-                winner,
-                loser
-              )
-            ]
+            content: "❌ تعذر حفظ النتيجة. حاول مرة ثانية.",
+            ephemeral: true
           });
-
-          await sendNewLeaderboardEmbed();
-
           return;
         }
-      }
 
-      if (interaction.isButton()) {
-        if (
-          interaction.customId ===
-          "find_1v1"
-        ) {
-          if (
-            queue.some(
-              player =>
-                player.id ===
-                interaction.user.id
+        const player1Won =
+          parsed.player1Score > parsed.player2Score;
+
+        const winner = player1Won ? match.player1 : match.player2;
+        const loser = player1Won ? match.player2 : match.player1;
+
+        await interaction.reply({
+          embeds: [
+            createResultEmbed(
+              match,
+              parsed.player1Score,
+              parsed.player2Score,
+              winner,
+              loser
             )
-          ) {
-            await interaction.reply({
-              content:
-                "❌ أنت موجود أصلًا في قائمة الانتظار.",
-              ephemeral: true
-            });
-
-            return;
-          }
-
-          queue.push({
-            id: interaction.user.id,
-            interaction: interaction
-          });
-
-          await interaction.reply({
-            content:
-              "⏳ تبحث عن خصم...",
-            ephemeral: true
-          });
-
-          if (queue.length >= 2) {
-            const player1Queue =
-              queue.shift();
-
-            const player2Queue =
-              queue.shift();
-
-            let player1;
-            let player2;
-            let matchChannel;
-
-            try {
-              player1 =
-                await interaction.guild.members.fetch(
-                  player1Queue.id
-                );
-
-              player2 =
-                await interaction.guild.members.fetch(
-                  player2Queue.id
-                );
-
-              matchChannel =
-                await createMatch(
-                  player1,
-                  player2
-                );
-            } catch (error) {
-              console.error(
-                "MATCH CREATE ERROR:",
-                error
-              );
-
-              queue.unshift(
-                player2Queue,
-                player1Queue
-              );
-
-              return;
-            }
-
-            try {
-              await player1Queue.interaction.editReply({
-                content:
-                  `🎮 تم إيجاد خصمك!\n\n` +
-                  `👤 الخصم: <@${player2.id}>\n` +
-                  `📁 روم الماتش: <#${matchChannel.id}>`
-              });
-            } catch {}
-
-            try {
-              await player2Queue.interaction.editReply({
-                content:
-                  `🎮 تم إيجاد خصمك!\n\n` +
-                  `👤 الخصم: <@${player1.id}>\n` +
-                  `📁 روم الماتش: <#${matchChannel.id}>`
-              });
-            } catch {}
-
-            return;
-          }
-
-          return;
-        }
-
-        if (
-          interaction.customId ===
-          "leave_queue"
-        ) {
-          const index =
-            queue.findIndex(
-              player =>
-                player.id ===
-                interaction.user.id
-            );
-
-          if (index === -1) {
-            await interaction.reply({
-              content:
-                "❌ أنت لست في قائمة الانتظار.",
-              ephemeral: true
-            });
-
-            return;
-          }
-
-          queue.splice(index, 1);
-
-          await interaction.reply({
-            content:
-              "✅ خرجت من قائمة الانتظار.",
-            ephemeral: true
-          });
-
-          return;
-        }
-
-        if (
-          interaction.customId ===
-          "game_link"
-        ) {
-          const channelId =
-            interaction.channel.id;
-
-          const match =
-            matches.get(channelId);
-
-          if (!match) {
-            await interaction.reply({
-              content:
-                "❌ هذا الروم ليس روم ماتش.",
-              ephemeral: true
-            });
-
-            return;
-          }
-
-          const isPlayer =
-            interaction.user.id ===
-              match.player1.id ||
-            interaction.user.id ===
-              match.player2.id;
-
-          if (!isPlayer) {
-            await interaction.reply({
-              content:
-                "❌ فقط لاعبي الماتش يقدرون يرسلون الرابط.",
-              ephemeral: true
-            });
-
-            return;
-          }
-
-          const modal =
-            new ModalBuilder()
-              .setCustomId(
-                `game_link_modal_${channelId}`
-              )
-              .setTitle(
-                "دخول القيم"
-              );
-
-          const input =
-            new TextInputBuilder()
-              .setCustomId("link")
-              .setLabel(
-                "رابط دخول القيم"
-              )
-              .setPlaceholder(
-                "https://www.roblox.com/share..."
-              )
-              .setStyle(
-                TextInputStyle.Short
-              )
-              .setRequired(true)
-              .setMaxLength(500);
-
-          modal.addComponents(
-            new ActionRowBuilder()
-              .addComponents(input)
-          );
-
-          await interaction.showModal(
-            modal
-          );
-
-          return;
-        }
-
-        if (
-          interaction.customId ===
-          "call_admin"
-        ) {
-          await interaction.reply({
-            content:
-              `📢 <@&${DEVELOPMENT_ROLE_ID}>`,
-            allowedMentions: {
-              roles: [
-                DEVELOPMENT_ROLE_ID
-              ]
-            }
-          });
-
-          return;
-        }
-
-        if (
-          interaction.customId ===
-          "close_match"
-        ) {
-          const channelId =
-            interaction.channel.id;
-
-          if (
-            closingMatches.has(
-              channelId
-            )
-          ) {
-            await interaction.reply({
-              content:
-                "❌ الروم قاعد ينغلق.",
-              ephemeral: true
-            });
-
-            return;
-          }
-
-          closingMatches.add(
-            channelId
-          );
-
-          let remaining = 10;
-
-          const sentMessage =
-            await interaction.reply({
-              embeds: [
-                createClosingEmbed(
-                  remaining
-                )
-              ],
-              fetchReply: true
-            });
-
-          const timer =
-            setInterval(async () => {
-              remaining--;
-
-              if (remaining <= 0) {
-                clearInterval(timer);
-
-                matches.delete(
-                  channelId
-                );
-
-                submittedResults.delete(
-                  channelId
-                );
-
-                closingMatches.delete(
-                  channelId
-                );
-
-                try {
-                  await interaction.channel.delete();
-                } catch {}
-
-                return;
-              }
-
-              try {
-                await sentMessage.edit({
-                  embeds: [
-                    createClosingEmbed(
-                      remaining
-                    )
-                  ]
-                });
-              } catch {
-                clearInterval(timer);
-              }
-            }, 1000);
-
-          return;
-        }
-      }
-
-      if (
-        interaction.isModalSubmit()
-      ) {
-        if (
-          interaction.customId.startsWith(
-            "game_link_modal_"
-          )
-        ) {
-          const channelId =
-            interaction.customId.replace(
-              "game_link_modal_",
-              ""
-            );
-
-          const match =
-            matches.get(channelId);
-
-          if (!match) {
-            await interaction.reply({
-              content:
-                "❌ الماتش غير موجود.",
-              ephemeral: true
-            });
-
-            return;
-          }
-
-          const isPlayer =
-            interaction.user.id ===
-              match.player1.id ||
-            interaction.user.id ===
-              match.player2.id;
-
-          if (!isPlayer) {
-            await interaction.reply({
-              content:
-                "❌ فقط لاعبي الماتش يقدرون يرسلون الرابط.",
-              ephemeral: true
-            });
-
-            return;
-          }
-
-          const link =
-            interaction.fields.getTextInputValue(
-              "link"
-            );
-
-          if (
-            !validRobloxLink(link)
-          ) {
-            await interaction.reply({
-              content:
-                "❌ حط رابط Roblox صحيح.",
-              ephemeral: true
-            });
-
-            return;
-          }
-
-          await interaction.reply({
-            content:
-              "✅ تم إرسال رابط القيم."
-          });
-
-          await interaction.channel.send(
-            link
-          );
-
-          return;
-        }
-      }
-    } catch (error) {
-      console.error(
-        "INTERACTION ERROR:",
-        error
-      );
-
-      if (
-        !interaction.replied &&
-        !interaction.deferred
-      ) {
-        try {
-          await interaction.reply({
-            content:
-              "❌ حدث خطأ غير متوقع.",
-            ephemeral: true
-          });
-        } catch {}
+          ]
+        });
+
+        await sendNewLeaderboardEmbed();
+        return;
       }
     }
+
+    if (interaction.isButton()) {
+      if (interaction.customId === "find_1v1") {
+        if (
+          queue.some(player => player.id === interaction.user.id)
+        ) {
+          await interaction.reply({
+            content: "❌ أنت موجود أصلًا في قائمة الانتظار.",
+            ephemeral: true
+          });
+          return;
+        }
+
+        await interaction.reply({
+          content: "⏳ تبحث عن خصم...",
+          ephemeral: true
+        });
+
+        queue.push({
+          id: interaction.user.id,
+          interaction
+        });
+
+        if (queue.length >= 2) {
+          const player1Queue = queue.shift();
+          const player2Queue = queue.shift();
+
+          let player1;
+          let player2;
+          let matchChannel;
+
+          try {
+            player1 = await interaction.guild.members.fetch(
+              player1Queue.id
+            );
+
+            player2 = await interaction.guild.members.fetch(
+              player2Queue.id
+            );
+
+            matchChannel = await createMatch(player1, player2);
+          } catch (error) {
+            console.error("MATCH CREATE ERROR:", error);
+
+            if (player1Queue) queue.unshift(player1Queue);
+            if (player2Queue) queue.unshift(player2Queue);
+
+            return;
+          }
+
+          try {
+            await player1Queue.interaction.editReply({
+              content:
+                `🎮 تم إيجاد خصمك!\n\n` +
+                `👤 الخصم: <@${player2.id}>\n` +
+                `📁 روم الماتش: <#${matchChannel.id}>`
+            });
+          } catch {}
+
+          try {
+            await player2Queue.interaction.editReply({
+              content:
+                `🎮 تم إيجاد خصمك!\n\n` +
+                `👤 الخصم: <@${player1.id}>\n` +
+                `📁 روم الماتش: <#${matchChannel.id}>`
+            });
+          } catch {}
+        }
+
+        return;
+      }
+
+      if (interaction.customId === "leave_queue") {
+        const index = queue.findIndex(
+          player => player.id === interaction.user.id
+        );
+
+        if (index === -1) {
+          await interaction.reply({
+            content: "❌ أنت لست في قائمة الانتظار.",
+            ephemeral: true
+          });
+          return;
+        }
+
+        queue.splice(index, 1);
+
+        await interaction.reply({
+          content: "✅ خرجت من قائمة الانتظار.",
+          ephemeral: true
+        });
+        return;
+      }
+
+      if (interaction.customId === "game_link") {
+        const channelId = interaction.channel.id;
+        const match = matches.get(channelId);
+
+        if (!match) {
+          await interaction.reply({
+            content: "❌ هذا الروم ليس روم ماتش.",
+            ephemeral: true
+          });
+          return;
+        }
+
+        const isPlayer =
+          interaction.user.id === match.player1.id ||
+          interaction.user.id === match.player2.id;
+
+        if (!isPlayer) {
+          await interaction.reply({
+            content: "❌ فقط لاعبي الماتش يقدرون يرسلون الرابط.",
+            ephemeral: true
+          });
+          return;
+        }
+
+        const modal = new ModalBuilder()
+          .setCustomId(`game_link_modal_${channelId}`)
+          .setTitle("دخول القيم");
+
+        const input = new TextInputBuilder()
+          .setCustomId("link")
+          .setLabel("رابط دخول القيم")
+          .setPlaceholder("https://www.roblox.com/share...")
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true)
+          .setMaxLength(500);
+
+        modal.addComponents(
+          new ActionRowBuilder().addComponents(input)
+        );
+
+        await interaction.showModal(modal);
+        return;
+      }
+
+      if (interaction.customId === "call_admin") {
+        if (!DEVELOPMENT_ROLE_ID) {
+          await interaction.reply({
+            content: "❌ DEVELOPMENT_ROLE_ID غير مضبوط في إعدادات الاستضافة.",
+            ephemeral: true
+          });
+          return;
+        }
+
+        await interaction.reply({
+          content: `<@&${DEVELOPMENT_ROLE_ID}>`,
+          allowedMentions: {
+            roles: [DEVELOPMENT_ROLE_ID]
+          }
+        });
+        return;
+      }
+
+      if (interaction.customId === "close_match") {
+        const channelId = interaction.channel.id;
+
+        if (!matches.has(channelId)) {
+          await interaction.reply({
+            content: "❌ هذا الروم ليس روم ماتش.",
+            ephemeral: true
+          });
+          return;
+        }
+
+        if (closingMatches.has(channelId)) {
+          await interaction.reply({
+            content: "❌ الروم قاعد ينغلق.",
+            ephemeral: true
+          });
+          return;
+        }
+
+        closingMatches.add(channelId);
+
+        let remaining = 10;
+
+        const sentMessage = await interaction.reply({
+          embeds: [createClosingEmbed(remaining)],
+          fetchReply: true
+        });
+
+        const timer = setInterval(async () => {
+          remaining--;
+
+          if (remaining <= 0) {
+            clearInterval(timer);
+
+            matches.delete(channelId);
+            submittedResults.delete(channelId);
+            closingMatches.delete(channelId);
+
+            try {
+              await interaction.channel.delete();
+            } catch {}
+
+            return;
+          }
+
+          try {
+            await sentMessage.edit({
+              embeds: [createClosingEmbed(remaining)]
+            });
+          } catch {
+            clearInterval(timer);
+            closingMatches.delete(channelId);
+          }
+        }, 1000);
+
+        return;
+      }
+    }
+
+    if (interaction.isModalSubmit()) {
+      if (
+        interaction.customId.startsWith("game_link_modal_")
+      ) {
+        const channelId = interaction.customId.replace(
+          "game_link_modal_",
+          ""
+        );
+
+        const match = matches.get(channelId);
+
+        if (!match) {
+          await interaction.reply({
+            content: "❌ الماتش غير موجود.",
+            ephemeral: true
+          });
+          return;
+        }
+
+        const isPlayer =
+          interaction.user.id === match.player1.id ||
+          interaction.user.id === match.player2.id;
+
+        if (!isPlayer) {
+          await interaction.reply({
+            content: "❌ فقط لاعبي الماتش يقدرون يرسلون الرابط.",
+            ephemeral: true
+          });
+          return;
+        }
+
+        const link = interaction.fields.getTextInputValue("link");
+
+        if (!validRobloxLink(link)) {
+          await interaction.reply({
+            content: "❌ حط رابط Roblox صحيح.",
+            ephemeral: true
+          });
+          return;
+        }
+
+        await interaction.reply({
+          content: "✅ تم إرسال رابط القيم."
+        });
+
+        await interaction.channel.send({
+          content: link
+        });
+
+        return;
+      }
+    }
+  } catch (error) {
+    console.error("INTERACTION ERROR:", error);
+
+    if (!interaction.replied && !interaction.deferred) {
+      try {
+        await interaction.reply({
+          content: "❌ حدث خطأ غير متوقع.",
+          ephemeral: true
+        });
+      } catch {}
+    }
   }
-);
+});
 
 client.login(TOKEN);

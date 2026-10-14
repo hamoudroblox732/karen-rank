@@ -1,3 +1,4 @@
+
 const {
   Client,
   GatewayIntentBits,
@@ -16,6 +17,7 @@ const {
 
 const fs = require("fs");
 const moderation = require("./moderation.js");
+const market = require("./market.js");
 
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
@@ -476,6 +478,11 @@ async function registerCommands() {
 
   commands.push(...moderation.commands);
 
+  // تسجيل أوامر ملف السوق الجديد
+  commands.push(
+    ...market.commands.map(command => command.toJSON())
+  );
+
   await client.application.commands.set(commands, GUILD_ID);
 
   console.log("Commands registered.");
@@ -493,6 +500,15 @@ client.once("clientReady", async () => {
 
 client.on("interactionCreate", async interaction => {
   try {
+    // معالجة أوامر السوق من market.js
+    if (
+      interaction.isChatInputCommand() &&
+      interaction.commandName === "marketpanel"
+    ) {
+      await market.handleInteraction(interaction);
+      return;
+    }
+
     const handledByModeration =
       await moderation.handleInteraction(interaction);
 

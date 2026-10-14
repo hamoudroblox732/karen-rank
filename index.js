@@ -395,11 +395,8 @@ client.once("clientReady", async () => {
 
 client.on("interactionCreate", async interaction => {
   try {
-    const handledByMarket = await market.handleInteraction(interaction);
-    if (handledByMarket) return;
-
-    const handledByModeration = await moderation.handleInteraction(interaction);
-    if (handledByModeration) return;
+    if (await market.handleInteraction(interaction)) return;
+    if (await moderation.handleInteraction(interaction)) return;
 
     if (interaction.isChatInputCommand()) {
       if (interaction.commandName === "setup") {
@@ -449,11 +446,7 @@ client.on("interactionCreate", async interaction => {
           return;
         }
 
-        const isPlayer =
-          interaction.user.id === match.player1.id ||
-          interaction.user.id === match.player2.id;
-
-        if (!isPlayer) {
+        if (![match.player1.id, match.player2.id].includes(interaction.user.id)) {
           await interaction.reply({
             content: "❌ فقط لاعبي الماتش يقدرون يسجلون النتيجة.",
             ephemeral: true
@@ -585,17 +578,9 @@ client.on("interactionCreate", async interaction => {
         const channelId = interaction.channel.id;
         const match = matches.get(channelId);
 
-        if (!match) {
+        if (!match || ![match.player1.id, match.player2.id].includes(interaction.user.id)) {
           await interaction.reply({
-            content: "❌ هذا الروم ليس روم ماتش.",
-            ephemeral: true
-          });
-          return;
-        }
-
-        if (![match.player1.id, match.player2.id].includes(interaction.user.id)) {
-          await interaction.reply({
-            content: "❌ فقط لاعبي الماتش يقدرون يرسلون الرابط.",
+            content: "❌ هذا الزر مخصص للاعبي الماتش.",
             ephemeral: true
           });
           return;
@@ -690,41 +675,31 @@ client.on("interactionCreate", async interaction => {
       }
     }
 
-    if (interaction.isModalSubmit()) {
-      if (interaction.customId.startsWith("game_link_modal_")) {
-        const channelId = interaction.customId.replace("game_link_modal_", "");
-        const match = matches.get(channelId);
+    if (interaction.isModalSubmit() &&
+        interaction.customId.startsWith("game_link_modal_")) {
+      const channelId = interaction.customId.replace("game_link_modal_", "");
+      const match = matches.get(channelId);
 
-        if (!match) {
-          await interaction.reply({
-            content: "❌ الماتش غير موجود.",
-            ephemeral: true
-          });
-          return;
-        }
-
-        if (![match.player1.id, match.player2.id].includes(interaction.user.id)) {
-          await interaction.reply({
-            content: "❌ فقط لاعبي الماتش يقدرون يرسلون الرابط.",
-            ephemeral: true
-          });
-          return;
-        }
-
-        const link = interaction.fields.getTextInputValue("link");
-
-        if (!validRobloxLink(link)) {
-          await interaction.reply({
-            content: "❌ حط رابط Roblox صحيح.",
-            ephemeral: true
-          });
-          return;
-        }
-
-        await interaction.reply({ content: "✅ تم إرسال رابط القيم." });
-        await interaction.channel.send({ content: link });
+      if (!match || ![match.player1.id, match.player2.id].includes(interaction.user.id)) {
+        await interaction.reply({
+          content: "❌ الماتش غير موجود أو ليس لك.",
+          ephemeral: true
+        });
         return;
       }
+
+      const link = interaction.fields.getTextInputValue("link");
+
+      if (!validRobloxLink(link)) {
+        await interaction.reply({
+          content: "❌ حط رابط Roblox صحيح.",
+          ephemeral: true
+        });
+        return;
+      }
+
+      await interaction.reply({ content: "✅ تم إرسال رابط القيم." });
+      await interaction.channel.send({ content: link });
     }
   } catch (error) {
     console.error("INTERACTION ERROR:", error);

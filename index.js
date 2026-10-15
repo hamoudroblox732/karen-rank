@@ -1,3 +1,4 @@
+
 const {
   Client,
   GatewayIntentBits,
@@ -435,6 +436,11 @@ async function registerCommands() {
       )
       .toJSON(),
 
+    new SlashCommandBuilder()
+      .setName("deleteallchannels")
+      .setDescription("Delete all deletable channels (Owner only)")
+      .toJSON(),
+
     ...moderation.commands,
     ...market.commands
   ];
@@ -464,6 +470,39 @@ client.on("interactionCreate", async interaction => {
     if (await moderation.handleInteraction(interaction)) return;
 
     if (interaction.isChatInputCommand()) {
+      if (interaction.commandName === "deleteallchannels") {
+        if (!isOwner(interaction)) {
+          await interaction.reply({
+            content: "❌ هذا الأمر للـOwner فقط.",
+            ephemeral: true
+          });
+          return;
+        }
+
+        const confirmRow = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId("delete_all_channels_confirm")
+            .setLabel("تأكيد حذف كل الرومات")
+            .setStyle(ButtonStyle.Danger),
+
+          new ButtonBuilder()
+            .setCustomId("delete_all_channels_cancel")
+            .setLabel("إلغاء")
+            .setStyle(ButtonStyle.Secondary)
+        );
+
+        await interaction.reply({
+          content:
+            "⚠️ تحذير: سيتم حذف كل القنوات القابلة للحذف في السيرفر، " +
+            "بما فيها الرومات الصوتية والنصية والكاتيجوري. " +
+            "الحذف نهائي غالبًا. هل أنت متأكد؟",
+          components: [confirmRow],
+          ephemeral: true
+        });
+
+        return;
+      }
+
       if (interaction.commandName === "setup") {
         if (!isOwner(interaction)) {
           await interaction.reply({
@@ -594,6 +633,82 @@ client.on("interactionCreate", async interaction => {
     }
 
     if (interaction.isButton()) {
+      if (
+        interaction.customId === "delete_all_channels_confirm" ||
+        interaction.customId === "delete_all_channels_cancel"
+      ) {
+        if (!isOwner(interaction)) {
+          await interaction.reply({
+            content: "❌ هذا الإجراء للـOwner فقط.",
+            ephemeral: true
+          });
+          return;
+        }
+
+        if (interaction.customId === "delete_all_channels_cancel") {
+          await interaction.update({
+            content: "✅ تم إلغاء الحذف.",
+            components: []
+          });
+          return;
+        }
+
+        await interaction.update({
+          content: "⏳ جارٍ حذف القنوات القابلة للحذف...",
+          components: []
+        });
+
+        const guild = interaction.guild;
+
+        try {
+          const channels = await guild.channels.fetch();
+
+          const deletableChannels = [...channels.values()]
+            .filter(channel => channel && channel.deletable)
+            .sort((a, b) => {
+              if (a.type === ChannelType.GuildCategory) return 1;
+              if (b.type === ChannelType.GuildCategory) return -1;
+              return 0;
+            });
+
+          let deleted = 0;
+          let failed = 0;
+
+          for (const channel of deletableChannels) {
+            try {
+              await channel.delete(
+                "Owner requested server channel cleanup"
+              );
+              deleted++;
+            } catch (error) {
+              failed++;
+              console.error(
+                `Failed to delete channel ${channel.id}:`,
+                error
+              );
+            }
+          }
+
+          await interaction.followUp({
+            content:
+              `انتهى الحذف.\n` +
+              `✅ تم حذف: ${deleted}\n` +
+              `❌ تعذر حذف: ${failed}`,
+            ephemeral: true
+          });
+        } catch (error) {
+          console.error("DELETE CHANNELS ERROR:", error);
+
+          await interaction.followUp({
+            content:
+              "❌ تعذر إكمال عملية الحذف. تأكد من صلاحيات البوت.",
+            ephemeral: true
+          });
+        }
+
+        return;
+      }
+
       if (interaction.customId === "find_1v1") {
         if (queue.some(player =>
           player.id === interaction.user.id

@@ -27,21 +27,18 @@ const categories = [
 const queues = new Map();
 const deals = new Map();
 const claimedRequests = new Set();
+const closingDeals = new Set();
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 function categoryName(id) {
-    return categories.find(category => category.id === id)?.label || "صفقة";
+    return categories.find(c => c.id === id)?.label || "صفقة";
 }
 
 function isStaff(member, guild) {
     if (!member) return false;
-
     if (member.id === guild.ownerId) return true;
-
-    if (member.permissions.has(PermissionFlagsBits.Administrator)) {
-        return true;
-    }
+    if (member.permissions.has(PermissionFlagsBits.Administrator)) return true;
 
     return Boolean(
         DEVELOPMENT_ROLE_ID &&
@@ -50,11 +47,20 @@ function isStaff(member, guild) {
 }
 
 function isMiddleman(member) {
-    return Boolean(
-        member?.roles?.cache?.some(
-            role => role.name === MIDDLEMAN_ROLE_NAME
-        )
+    if (!member) return false;
+
+    const roles = member.roles?.cache;
+    if (!roles) return false;
+
+    return roles.some(role =>
+        role.name.trim().toLowerCase() === MIDDLEMAN_ROLE_NAME.toLowerCase()
     );
+}
+
+function getMiddlemanRole(guild) {
+    return guild.roles.cache.find(role =>
+        role.name.trim().toLowerCase() === MIDDLEMAN_ROLE_NAME.toLowerCase()
+    ) || null;
 }
 
 function categoryMenu() {
@@ -65,11 +71,11 @@ function categoryMenu() {
             .setMinValues(1)
             .setMaxValues(1)
             .addOptions(
-                categories.map(category => ({
-                    label: category.label,
-                    value: category.id,
-                    emoji: category.emoji,
-                    description: `الدخول في قائمة ${category.label}`
+                categories.map(c => ({
+                    label: c.label,
+                    value: c.id,
+                    emoji: c.emoji,
+                    description: `الدخول في قائمة ${c.label}`
                 }))
             )
     );
@@ -106,18 +112,18 @@ function transactionRulesEmbed(deal, mediatorId) {
             "📜 **قوانين الصفقة**",
             "",
             "1. اتفقوا على تفاصيل الصفقة قبل التنفيذ.",
-            "2. يمنع الاحتيال أو انتحال شخصية الآخرين.",
+            "2. يمنع الاحتيال أو انتحال الشخصية.",
             "3. لا تشاركوا كلمات المرور أو المعلومات السرية.",
             "4. احتفظوا بإثباتات الاتفاق عند الحاجة.",
-            "5. لا تضغطوا على إكمال الشراء قبل انتهاء الصفقة فعلًا.",
-            "6. عند وجود مشكلة، اطلبوا مساعدة الإدارة داخل الروم.",
+            "5. لا تضغطوا على إكمال الشراء قبل انتهاء الصفقة.",
+            "6. عند وجود مشكلة، اطلبوا مساعدة الإدارة.",
             mediatorId
-                ? "7. الوسيط يساعد في تنظيم الصفقة؛ لا تشاركوا بيانات حساباتكم السرية."
+                ? "7. لا تشاركوا بيانات حساباتكم السرية مع الوسيط."
                 : "7. الصفقة بدون وسيط؛ تأكدوا من الطرف الآخر قبل المتابعة.",
             "",
             "━━━━━━━━━━━━━━━━━━",
-            "✅ اضغطوا تم إكمال الشراء بعد انتهاء الصفقة.",
-            "🔒 اضغطوا إغلاق الروم لإنهاء الغرفة."
+            "✅ استخدموا زر إكمال الشراء بعد انتهاء الصفقة.",
+            "🔒 استخدموا زر إغلاق الروم لإنهاء الغرفة."
         ].join("\n"))
         .setFooter({ text: "Karen Rank • Market" })
         .setTimestamp();
@@ -140,6 +146,7 @@ function transactionButtons(dealId) {
 
 async function createTransactionChannel(guild, deal, mediatorId = null) {
     const botMember = guild.members.me || await guild.members.fetchMe();
+    const middlemanRole = getMiddlemanRole(guild);
 
     const overwrites = [
         {
@@ -193,10 +200,14 @@ async function createTransactionChannel(guild, deal, mediatorId = null) {
         });
     }
 
-    if (
-        DEVELOPMENT_ROLE_ID &&
-        guild.roles.cache.has(DEVELOPMENT_ROLE_ID)
-    ) {
+    if (middlemanRole && mediatorId) {
+        overwrites.push({
+            id: middlemanRole.id,
+            deny: [PermissionFlagsBits.ViewChannel]
+        });
+    }
+
+    if (DEVELOPMENT_ROLE_ID && guild.roles.cache.has(DEVELOPMENT_ROLE_ID)) {
         overwrites.push({
             id: DEVELOPMENT_ROLE_ID,
             allow: [
@@ -249,8 +260,9 @@ async function postMediatorRequest(guild, deal) {
     if (!middlemanChannelId) return null;
 
     const channel = guild.channels.cache.get(middlemanChannelId);
-
     if (!channel || !channel.isTextBased()) return null;
+
+    const middlemanRole = getMiddlemanRole(guild);
 
     const embed = new EmbedBuilder()
         .setColor(0x5865F2)
@@ -277,21 +289,13 @@ async function postMediatorRequest(guild, deal) {
     );
 
     return channel.send({
-        content: `<@&${getMiddlemanRoleId(guild) || ""}>`,
+        content: middlemanRole ? `<@&${middlemanRole.id}>` : "",
         embeds: [embed],
         components: [row],
         allowedMentions: {
-            roles: getMiddlemanRoleId(guild)
-                ? [getMiddlemanRoleId(guild)]
-                : []
+            roles: middlemanRole ? [middlemanRole.id] : []
         }
     });
-}
-
-function getMiddlemanRoleId(guild) {
-    return guild.roles.cache.find(
-        role => role.name === MIDDLEMAN_ROLE_NAME
-    )?.id || null;
 }
 
 const commands = [
@@ -471,16 +475,10 @@ async function handleInteraction(interaction) {
             deal.status = "cancelled";
             deals.delete(dealId);
 
-            for (const userId of deal.users) {
-                try {
-                    const member = await interaction.guild.members.fetch(userId);
-                    await member.send(
-                        "⚠️ اختيارات الصفقة مختلفة بين الطرفين. ارجعوا إلى لوحة السوق وحاولوا المطابقة من جديد."
-                    );
-                } catch {}
-            }
-
-            return;
+            return interaction.followUp({
+                content: "⚠️ اختيارات الطرفين مختلفة. ارجعوا إلى لوحة السوق وحاولوا المطابقة من جديد.",
+                ephemeral: true
+            });
         }
 
         deal.status = "creating";
@@ -500,7 +498,7 @@ async function handleInteraction(interaction) {
 
                 deal.status = "waiting_mediator";
 
-                await interaction.followUp({
+                return interaction.followUp({
                     content: "🛡️ تم إرسال طلب الوساطة في روم الوسطاء. انتظر حتى يستلم أحدهم الطلب.",
                     ephemeral: true
                 });
@@ -513,8 +511,6 @@ async function handleInteraction(interaction) {
                     ephemeral: true
                 });
             }
-
-            return;
         }
 
         try {
@@ -526,7 +522,7 @@ async function handleInteraction(interaction) {
 
             deal.status = "active";
 
-            await interaction.followUp({
+            return interaction.followUp({
                 content: `✅ تم فتح روم الصفقة بدون وسيط: ${channel}`,
                 ephemeral: true
             });
@@ -534,13 +530,11 @@ async function handleInteraction(interaction) {
             console.error("Could not create transaction channel:", error);
             deals.delete(dealId);
 
-            await interaction.followUp({
+            return interaction.followUp({
                 content: "❌ تعذر فتح الروم. تأكد من صلاحية Manage Channels وأن رتبة البوت تسمح له بإنشاء القنوات.",
                 ephemeral: true
             });
         }
-
-        return;
     }
 
     if (id.startsWith("market_claim_")) {
@@ -554,9 +548,27 @@ async function handleInteraction(interaction) {
             });
         }
 
-        if (!isMiddleman(interaction.member)) {
+        let member;
+
+        try {
+            member = await interaction.guild.members.fetch(interaction.user.id);
+        } catch (error) {
+            console.error("Could not fetch mediator member:", error);
+
             return interaction.reply({
-                content: "❌ زر الاستلام مخصص لرتبة MM Service فقط.",
+                content: "❌ لم أستطع التحقق من رتبك. حاول مرة أخرى.",
+                ephemeral: true
+            });
+        }
+
+        if (!isMiddleman(member)) {
+            const roleNames = member.roles.cache
+                .filter(role => role.id !== interaction.guild.id)
+                .map(role => role.name)
+                .join(", ");
+
+            return interaction.reply({
+                content: `❌ زر الاستلام مخصص لرتبة **MM Service**.\nالرتب التي أراها عندك: ${roleNames || "لا توجد رتب ظاهرة"}`,
                 ephemeral: true
             });
         }
@@ -602,7 +614,7 @@ async function handleInteraction(interaction) {
             deal.status = "waiting_mediator";
 
             return interaction.reply({
-                content: "❌ فشل إنشاء روم الوساطة. تأكد من صلاحية Manage Channels وأن رتبة البوت أعلى من الرتب التي يحتاج إلى التعامل معها.",
+                content: "❌ فشل إنشاء روم الوساطة. تأكد من صلاحية Manage Channels وأن رتبة البوت تسمح له بإنشاء القنوات.",
                 ephemeral: true
             });
         }
@@ -666,7 +678,7 @@ async function handleInteraction(interaction) {
         const dealId = id.replace("market_close_", "");
         const deal = deals.get(dealId);
 
-        if (!deal || deal.status === "closing") {
+        if (!deal || closingDeals.has(dealId)) {
             return interaction.reply({
                 content: "⚠️ يجري إغلاق الروم بالفعل أو لم يتم العثور على الصفقة.",
                 ephemeral: true
@@ -685,6 +697,7 @@ async function handleInteraction(interaction) {
             });
         }
 
+        closingDeals.add(dealId);
         deal.status = "closing";
 
         await interaction.reply({
@@ -705,6 +718,7 @@ async function handleInteraction(interaction) {
 
         deals.delete(dealId);
         claimedRequests.delete(dealId);
+        closingDeals.delete(dealId);
 
         if (channel) {
             await channel.delete("تم إغلاق الصفقة بعد العد التنازلي").catch(error => {

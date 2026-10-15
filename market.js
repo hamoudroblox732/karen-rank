@@ -1,1023 +1,477 @@
-
 const {
-  SlashCommandBuilder,
-  EmbedBuilder,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  ModalBuilder,
-  TextInputBuilder,
-  TextInputStyle,
-  ChannelType,
-  PermissionsBitField
-} = require("discord.js");
+SlashCommandBuilder,
+EmbedBuilder,
+ActionRowBuilder,
+ButtonBuilder,
+ButtonStyle,
+StringSelectMenuBuilder,
+ChannelType,
+PermissionsBitField
+} = require(“discord.js”);
 
-const ADMIN_ROLE_ID = "1554456128472219770";
-const MIDDLEMAN_ROLE_ID = "1559877945441648773";
-const OWNER_ROLE_ID = "1554456245329596486";
+const MIDDLEMAN_ROLE_ID = “1559877945441648773”;
 
-const listings = new Map();
-const purchases = new Map();
+const queues = new Map();
+const matches = new Map();
 const middlemanRequests = new Map();
-const creatingRooms = new Set();
+const activeUsers = new Set();
 
-const categories = {
-  accounts: "حسابات Roblox",
-  items: "أغراض Roblox داخل الألعاب",
-  misc: "أغراض أخرى"
-};
+let mediationChannelId = null;
+
+const categories = [
+{ label: “شراء حساب”, value: “buy_account”, emoji: “🛒” },
+{ label: “بيع حساب”, value: “sell_account”, emoji: “💰” },
+{ label: “شراء أغراض داخل لعبة”, value: “buy_items”, emoji: “🎮” },
+{ label: “بيع أغراض داخل لعبة”, value: “sell_items”, emoji: “📦” },
+{ label: “شراء أغراض أخرى”, value: “buy_misc”, emoji: “🛍️” },
+{ label: “بيع أغراض أخرى”, value: “sell_misc”, emoji: “💎” }
+];
 
 const commands = [
-  new SlashCommandBuilder()
-    .setName("marketpanel")
-    .setDescription("إرسال لوحة السوق"),
+new SlashCommandBuilder()
+.setName(“marketpanel”)
+.setDescription(“إرسال لوحة مطابقة السوق”),
 
-  new SlashCommandBuilder()
-    .setName("middlemanpanel")
-    .setDescription("إرسال لوحة طلب الوسيط")
+new SlashCommandBuilder()
+.setName(“setmiddlemanchannel”)
+.setDescription(“تحديد روم استقبال طلبات الوساطة”)
+.setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
+.addChannelOption(option =>
+option
+.setName(“channel”)
+.setDescription(“اختر روم الوساطة”)
+.addChannelTypes(ChannelType.GuildText)
+.setRequired(true)
+)
 ].map(command => command.toJSON());
 
-function isStaff(interaction) {
-  return Boolean(
-    interaction.guild &&
-    (
-      interaction.user.id === interaction.guild.ownerId ||
-      interaction.memberPermissions?.has(
-        PermissionsBitField.Flags.Administrator
-      )
-    )
-  );
+function isAdmin(interaction) {
+return Boolean(
+interaction.guild &&
+(
+interaction.user.id === interaction.guild.ownerId ||
+interaction.memberPermissions?.has(
+PermissionsBitField.Flags.Administrator
+)
+)
+);
 }
 
-function hasRole(interaction, roleId) {
-  const roles = interaction.member?.roles;
-
-  if (roles?.cache) return roles.cache.has(roleId);
-  if (Array.isArray(roles)) return roles.includes(roleId);
-
-  return false;
+function getCategory(value) {
+return categories.find(category => category.value === value);
 }
 
-function marketEmbed() {
-  return new EmbedBuilder()
-    .setColor(0x5865f2)
-    .setTitle("『 KAREN RANK ・ MARKET 』")
-    .setDescription(
-      "مرحبًا بك في سوق السيرفر\n\n" +
-      "━━━━━━━━━━━━━━━━━━━━\n\n" +
-      "🎮 **حسابات Roblox**\n" +
-      "بيع وشراء الحسابات حسب القوانين.\n\n" +
-      "🧩 **أغراض Roblox داخل الألعاب**\n" +
-      "بيع وشراء الأغراض داخل الألعاب.\n\n" +
-      "📦 **أغراض أخرى**\n" +
-      "اعرض أغراضك المسموح بها للبيع.\n\n" +
-      "━━━━━━━━━━━━━━━━━━━━\n\n" +
-      "📜 **قوانين السوق**\n" +
-      "• يمنع الاحتيال أو انتحال شخصية الآخرين.\n" +
-      "• لا تشارك كلمات المرور أو رموز التحقق.\n" +
-      "• اتفق على السعر والتفاصيل قبل إتمام الصفقة.\n" +
-      "• استخدم الوسيط عند الحاجة.\n" +
-      "• تداول حسابات Roblox قد يخالف شروط المنصة؛ تحقق من الشروط قبل أي معاملة."
-    )
-    .setFooter({ text: "Karen Rank • Market" })
-    .setTimestamp();
+function createId() {
+return ${Date.now()}-${Math.random().toString(36).slice(2, 9)};
 }
 
-function marketPanelComponents() {
-  return [
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId("market_new_accounts")
-        .setLabel("بيع حساب Roblox")
-        .setStyle(ButtonStyle.Primary),
-      new ButtonBuilder()
-        .setCustomId("market_new_items")
-        .setLabel("بيع أغراض داخل لعبة")
-        .setStyle(ButtonStyle.Primary)
-    ),
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId("market_new_misc")
-        .setLabel("بيع أغراض أخرى")
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId("market_rules")
-        .setLabel("القوانين")
-        .setStyle(ButtonStyle.Secondary)
-    )
-  ];
+function createMarketPanel() {
+const embed = new EmbedBuilder()
+.setColor(0x5865f2)
+.setTitle(”『 KAREN RANK ・ MARKET 』”)
+.setDescription(
+“مرحبًا بك في نظام مطابقة السوق!\n\n” +
+“━━━━━━━━━━━━━━━━━━━━\n\n” +
+“📦 اختر نوع الطلب من القائمة.\n\n” +
+“⏳ إذا ما فيه شخص يطلب النوع نفسه، بينتظر طلبك.\n\n” +
+“🤝 إذا تطابقتم، كل واحد توصله رسالة خاصة داخل ديسكورد “ +
+“في نفس الروم، فيها منشن الطرف الثاني.\n\n” +
+“🛡️ بعدها تختارون مع وسيط أو بدون وسيط.\n\n” +
+“━━━━━━━━━━━━━━━━━━━━\n” +
+“⚠️ لا تشارك كلمات المرور أو رموز التحقق.”
+)
+.setFooter({ text: “Karen Rank • Market Matching” })
+.setTimestamp();
+
+const menu = new StringSelectMenuBuilder()
+.setCustomId(“market:select”)
+.setPlaceholder(“اختر نوع طلبك”)
+.setMinValues(1)
+.setMaxValues(1)
+.addOptions(
+categories.map(category => ({
+label: category.label,
+value: category.value,
+emoji: category.emoji
+}))
+);
+
+return {
+embeds: [embed],
+components: [new ActionRowBuilder().addComponents(menu)]
+};
 }
 
-function middlemanEmbed() {
-  return new EmbedBuilder()
-    .setColor(0x57f287)
-    .setTitle("『 KAREN RANK ・ MIDDLEMAN 』")
-    .setDescription(
-      "تحتاج وسيطًا لمعاملتك؟\n\n" +
-      "اضغط **طلب وسيط** ثم أدخل منشن الطرف الثاني أو Discord ID الخاص به.\n\n" +
-      "بعد استلام الوسيط للطلب، يستطيع أحد طرفي الصفقة فتح روم خاص.\n\n" +
-      "━━━━━━━━━━━━━━━━━━━━\n\n" +
-      "• لا تشارك كلمات المرور أو رموز التحقق.\n" +
-      "• تحقق من هوية الوسيط.\n" +
-      "• اتفقوا على تفاصيل الصفقة بوضوح."
-    )
-    .setFooter({ text: "Karen Rank • Middleman Service" })
-    .setTimestamp();
+function choiceButtons(matchId) {
+return [
+new ActionRowBuilder().addComponents(
+new ButtonBuilder()
+.setCustomId(market:choice:mediated:${matchId})
+.setLabel(“مع وسيط”)
+.setEmoji(“🤝”)
+.setStyle(ButtonStyle.Success),
+
+  new ButtonBuilder()
+    .setCustomId(`market:choice:direct:${matchId}`)
+    .setLabel("بدون وسيط")
+    .setEmoji("⚡")
+    .setStyle(ButtonStyle.Secondary)
+)
+
+];
 }
 
-function middlemanPanelComponents() {
-  return [
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId("mm_request")
-        .setLabel("طلب وسيط")
-        .setStyle(ButtonStyle.Success)
-    )
-  ];
+function mediatorButtons(matchId) {
+return [
+new ActionRowBuilder().addComponents(
+new ButtonBuilder()
+.setCustomId(market:requestmediator:${matchId})
+.setLabel(“طلب وسيط”)
+.setEmoji(“🤝”)
+.setStyle(ButtonStyle.Primary)
+)
+];
 }
 
-function listingButtons(listingId) {
-  return [
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`market_buy_${listingId}`)
-        .setLabel("🛒 طلب شراء")
-        .setStyle(ButtonStyle.Success)
-    )
-  ];
+function getMatchMessage(match, userId) {
+const otherId = match.users.find(id => id !== userId);
+const category = getCategory(match.type);
+
+return (
+“🎉 تم العثور على شخص يطابق طلبك!\n\n” +
+📦 **نوع الطلب:** ${category.label}\n +
+👤 **الطرف الثاني:** <@${otherId}>\n\n +
+“اختر طريقة إتمام الصفقة من الأزرار بالأسفل.”
+);
 }
 
-function purchaseButtons(purchaseId) {
-  return [
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`market_confirm_${purchaseId}`)
-        .setLabel("✅ تأكيد البيع")
-        .setStyle(ButtonStyle.Success),
-      new ButtonBuilder()
-        .setCustomId(`market_cancel_${purchaseId}`)
-        .setLabel("إلغاء الطلب")
-        .setStyle(ButtonStyle.Danger)
-    )
-  ];
+async function updatePrivate(entry, content, components = []) {
+try {
+await entry.interaction.editReply({
+content,
+components
+});
+return true;
+} catch (error) {
+console.error(“Could not update private match response:”, error.message);
+return false;
+}
 }
 
-function middlemanRequestButtons(requestId, claimed = false) {
-  const row = new ActionRowBuilder();
+async function findMatch(interaction, type) {
+const userId = interaction.user.id;
 
-  if (!claimed) {
-    row.addComponents(
-      new ButtonBuilder()
-        .setCustomId(`mm_claim_${requestId}`)
-        .setLabel("استلام الطلب")
-        .setStyle(ButtonStyle.Primary)
-    );
-  } else {
-    row.addComponents(
-      new ButtonBuilder()
-        .setCustomId(`mm_open_${requestId}`)
-        .setLabel("فتح روم المعاملة")
-        .setStyle(ButtonStyle.Success)
-    );
-  }
-
-  return [row];
+if (activeUsers.has(userId)) {
+await interaction.editReply({
+content:
+“⚠️ أنت داخل مطابقة حالية. أنهِ المطابقة أولًا قبل طلب مطابقة ثانية.”,
+components: []
+});
+return;
 }
 
-function getUserId(input) {
-  const text = input.trim();
-  const mention = text.match(/^<@!?(\d+)>$/);
+const waiting = queues.get(type) || [];
 
-  if (mention) return mention[1];
+const index = waiting.findIndex(entry => entry.userId !== userId);
 
-  const idMatch = text.match(/^(\d{17,20})$/);
-  if (idMatch) return idMatch[1];
+if (index === -1) {
+waiting.push({
+userId,
+interaction
+});
 
-  return null;
+queues.set(type, waiting);
+await interaction.editReply({
+  content:
+    "⏳ **طلبك في قائمة الانتظار**\n\n" +
+    `📦 النوع: **${getCategory(type).label}**\n\n` +
+    "ما راح يظهر طلبك للكل. ننتظر شخصًا ثانيًا يختار النوع نفسه.",
+  components: []
+});
+return;
+
 }
 
-function listingModal(category) {
-  const modal = new ModalBuilder()
-    .setCustomId(`market_listing_${category}`)
-    .setTitle("نشر إعلان بيع");
+const [partner] = waiting.splice(index, 1);
+queues.set(type, waiting);
 
-  const title = new TextInputBuilder()
-    .setCustomId("item_title")
-    .setLabel("اسم الغرض")
-    .setPlaceholder("اكتب اسم الغرض")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(true)
-    .setMaxLength(80);
+const matchId = createId();
 
-  const price = new TextInputBuilder()
-    .setCustomId("item_price")
-    .setLabel("السعر")
-    .setPlaceholder("مثال: 50 ريال أو 100 Robux")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(true)
-    .setMaxLength(50);
+const match = {
+id: matchId,
+type,
+users: [partner.userId, userId],
+choices: {},
+mediatorRequested: false,
+status: “choosing”,
+channelId: interaction.channelId,
+guildId: interaction.guildId
+};
 
-  const details = new TextInputBuilder()
-    .setCustomId("item_details")
-    .setLabel("تفاصيل العرض وطريقة التسليم")
-    .setPlaceholder("اكتب تفاصيل الغرض هنا")
-    .setStyle(TextInputStyle.Paragraph)
-    .setRequired(true)
-    .setMaxLength(800);
+matches.set(matchId, match);
+activeUsers.add(partner.userId);
+activeUsers.add(userId);
 
-  modal.addComponents(
-    new ActionRowBuilder().addComponents(title),
-    new ActionRowBuilder().addComponents(price),
-    new ActionRowBuilder().addComponents(details)
-  );
-
-  return modal;
+await Promise.all([
+updatePrivate(
+partner,
+getMatchMessage(match, partner.userId),
+choiceButtons(matchId)
+),
+updatePrivate(
+{ interaction },
+getMatchMessage(match, userId),
+choiceButtons(matchId)
+)
+]);
 }
 
-function makeListingEmbed(listing) {
-  return new EmbedBuilder()
-    .setColor(0x5865f2)
-    .setTitle(`🛒 ${listing.title}`)
-    .setDescription(
-      `**القسم:** ${categories[listing.category]}\n\n` +
-      `**السعر:** ${listing.price}\n\n` +
-      `**التفاصيل:**\n${listing.details}\n\n` +
-      "━━━━━━━━━━━━━━━━━━━━\n" +
-      `**البائع:** <@${listing.sellerId}>\n` +
-      "**الحالة:** 🟢 متوفر"
-    )
-    .setFooter({ text: `Listing ID: ${listing.id}` })
-    .setTimestamp();
+async function handleChoice(interaction, matchId, choice) {
+const match = matches.get(matchId);
+
+if (!match || !match.users.includes(interaction.user.id)) {
+await interaction.reply({
+content: “❌ المطابقة غير موجودة أو انتهت.”,
+ephemeral: true
+});
+return;
 }
 
-function makePurchaseEmbed(purchase, statusText) {
-  return new EmbedBuilder()
-    .setColor(0xf1c40f)
-    .setTitle("『 طلب شراء جديد 』")
-    .setDescription(
-      `**الغرض:** ${purchase.listingTitle}\n` +
-      `**السعر:** ${purchase.price}\n\n` +
-      `**البائع:** <@${purchase.sellerId}>\n` +
-      `**المشتري:** <@${purchase.buyerId}>\n\n` +
-      `**الحالة:** ${statusText}\n\n` +
-      "على البائع التأكد من تفاصيل الصفقة قبل تأكيد البيع."
-    )
-    .setTimestamp();
+if (match.status !== “choosing”) {
+await interaction.reply({
+content: “⚠️ تم اختيار طريقة الصفقة مسبقًا.”,
+ephemeral: true
+});
+return;
 }
 
-function dealRoomEmbed(purchase) {
-  return new EmbedBuilder()
-    .setColor(0x57f287)
-    .setTitle("『 KAREN RANK ・ DEAL ROOM 』")
-    .setDescription(
-      "## 🔒 روم الصفقة الخاص\n\n" +
-      "━━━━━━━━━━━━━━━━━━━━\n\n" +
-      `📦 **الغرض:** ${purchase.listingTitle}\n` +
-      `💰 **السعر المتفق عليه:** ${purchase.price}\n\n` +
-      `🛒 **المشتري:** <@${purchase.buyerId}>\n` +
-      `🏷️ **البائع:** <@${purchase.sellerId}>\n\n` +
-      "━━━━━━━━━━━━━━━━━━━━\n\n" +
-      "📌 **تعليمات الصفقة**\n" +
-      "• اتفقوا على تفاصيل التسليم هنا.\n" +
-      "• لا تشاركوا كلمات المرور أو رموز التحقق.\n" +
-      "• لا تسلّموا الغرض قبل التأكد من الاتفاق.\n" +
-      "• يمكنكم طلب وسيط إذا احتجتم مساعدة.\n\n" +
-      "عند انتهاء الصفقة، اضغط زر إغلاق الروم."
-    )
-    .setFooter({ text: "Karen Rank • Secure Deal" })
-    .setTimestamp();
+match.choices[interaction.user.id] = choice;
+
+const otherId = match.users.find(id => id !== interaction.user.id);
+const otherChoice = match.choices[otherId];
+
+if (!otherChoice) {
+await interaction.update({
+content:
+✅ اخترت **${choice === "mediated" ? "مع وسيط" : "بدون وسيط"}**.\n\n +
+“⏳ ننتظر اختيار الطرف الثاني.”,
+components: choiceButtons(matchId)
+});
+return;
 }
 
-function dealRoomButtons(purchaseId) {
-  return [
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`market_close_room_${purchaseId}`)
-        .setLabel("🔒 إغلاق الروم")
-        .setStyle(ButtonStyle.Danger)
-    )
-  ];
+if (otherChoice !== choice) {
+await interaction.update({
+content:
+“⚠️ اختياراتكم مختلفة.\n\n” +
+“الطرف الثاني اختار طريقة مختلفة. غيّر اختيارك عشان تتفقون.”,
+components: choiceButtons(matchId)
+});
+return;
 }
 
-async function createPrivateRoom(guild, data, roomType = "deal") {
-  const buyer = await guild.members.fetch(data.buyerId);
-  const seller = await guild.members.fetch(data.sellerId);
+if (choice === “mediated”) {
+match.status = “mediator”;
+await interaction.update({
+content:
+“🤝 اتفقتوا على إتمام الصفقة مع وسيط!\n\n” +
+“اضغط زر طلب وسيط لإرسال طلبكم إلى روم الوساطة المحدد.”,
+components: mediatorButtons(matchId)
+});
 
-  const permissions = [
-    {
-      id: guild.roles.everyone.id,
-      deny: [PermissionsBitField.Flags.ViewChannel]
-    }
-  ];
+return;
 
-  const memberIds = new Set([
-    buyer.id,
-    seller.id,
-    guild.ownerId
-  ]);
+}
 
-  if (data.mediatorId) memberIds.add(data.mediatorId);
+match.status = “completed”;
 
-  for (const userId of memberIds) {
-    permissions.push({
-      id: userId,
-      allow: [
-        PermissionsBitField.Flags.ViewChannel,
-        PermissionsBitField.Flags.SendMessages,
-        PermissionsBitField.Flags.ReadMessageHistory,
-        PermissionsBitField.Flags.AttachFiles,
-        PermissionsBitField.Flags.EmbedLinks
-      ]
-    });
-  }
+await interaction.update({
+content:
+“✅ اتفقتوا على إتمام الصفقة بدون وسيط.\n\n” +
+👤 الطرف الثاني: <@${otherId}>\n\n +
+“تقدرون تكملون اتفاقكم بينكم.”,
+components: []
+});
 
-  for (const roleId of [ADMIN_ROLE_ID, OWNER_ROLE_ID]) {
-    if (guild.roles.cache.has(roleId)) {
-      permissions.push({
-        id: roleId,
-        allow: [
-          PermissionsBitField.Flags.ViewChannel,
-          PermissionsBitField.Flags.SendMessages,
-          PermissionsBitField.Flags.ReadMessageHistory
-        ]
-      });
-    }
-  }
+matches.delete(matchId);
+activeUsers.delete(match.users[0]);
+activeUsers.delete(match.users[1]);
+}
 
-  if (data.mediatorId && guild.roles.cache.has(MIDDLEMAN_ROLE_ID)) {
-    permissions.push({
-      id: MIDDLEMAN_ROLE_ID,
-      allow: [
-        PermissionsBitField.Flags.ViewChannel,
-        PermissionsBitField.Flags.SendMessages,
-        PermissionsBitField.Flags.ReadMessageHistory
-      ]
-    });
-  }
+async function requestMediator(interaction, matchId) {
+const match = matches.get(matchId);
 
-  const channel = await guild.channels.create({
-    name: `${roomType}-${data.id}`.slice(0, 90),
-    type: ChannelType.GuildText,
-    permissionOverwrites: permissions
-  });
+if (!match || !match.users.includes(interaction.user.id)) {
+await interaction.reply({
+content: “❌ المطابقة غير موجودة.”,
+ephemeral: true
+});
+return;
+}
 
-  return channel;
+if (match.status !== “mediator”) {
+await interaction.reply({
+content: “❌ المطابقة ليست في مرحلة طلب الوسيط.”,
+ephemeral: true
+});
+return;
+}
+
+if (match.mediatorRequested) {
+await interaction.reply({
+content: “✅ تم إرسال طلب الوساطة بالفعل.”,
+ephemeral: true
+});
+return;
+}
+
+if (!mediationChannelId) {
+await interaction.reply({
+content:
+“❌ الإدارة ما حددت روم الوساطة. استخدم /setmiddlemanchannel أولًا.”,
+ephemeral: true
+});
+return;
+}
+
+await interaction.deferReply({ ephemeral: true });
+
+const channel = await interaction.guild.channels
+.fetch(mediationChannelId)
+.catch(() => null);
+
+if (!channel || !channel.isTextBased()) {
+await interaction.editReply(
+“❌ روم الوساطة غير متاح. اطلب من الإدارة تحديد الروم من جديد.”
+);
+return;
+}
+
+const category = getCategory(match.type);
+
+const embed = new EmbedBuilder()
+.setColor(0x57f287)
+.setTitle(”『 KAREN RANK ・ MIDDLEMAN REQUEST 』”)
+.setDescription(
+“🤝 طلب وساطة جديد\n\n” +
+📦 **نوع الطلب:** ${category.label}\n\n +
+👤 **الطرف الأول:** <@${match.users[0]}>\n +
+👤 **الطرف الثاني:** <@${match.users[1]}>\n\n +
+“الحالة: ⏳ بانتظار استلام وسيط.”
+)
+.setFooter({ text: Request ID: ${match.id} })
+.setTimestamp();
+
+try {
+const message = await channel.send({
+content: <@&${MIDDLEMAN_ROLE_ID}>,
+embeds: [embed],
+allowedMentions: {
+roles: [MIDDLEMAN_ROLE_ID]
+}
+});
+
+match.mediatorRequested = true;
+match.status = "completed";
+middlemanRequests.set(match.id, {
+  id: match.id,
+  users: [...match.users],
+  type: match.type,
+  channelId: channel.id,
+  messageId: message.id,
+  status: "pending"
+});
+await interaction.editReply(
+  `✅ تم إرسال طلب الوساطة في ${channel}.`
+);
+matches.delete(matchId);
+activeUsers.delete(match.users[0]);
+activeUsers.delete(match.users[1]);
+
+} catch (error) {
+console.error(“MIDDLEMAN REQUEST ERROR:”, error);
+
+await interaction.editReply(
+  "❌ تعذر إرسال طلب الوساطة. تأكد من صلاحيات البوت في الروم."
+);
+
+}
 }
 
 async function handleInteraction(interaction) {
-  if (interaction.isChatInputCommand()) {
-    if (
-      interaction.commandName === "marketpanel" ||
-      interaction.commandName === "middlemanpanel"
-    ) {
-      if (!isStaff(interaction)) {
-        await interaction.reply({
-          content: "❌ هذا الأمر للإدارة فقط.",
-          ephemeral: true
-        });
-        return true;
-      }
+if (interaction.isChatInputCommand()) {
+if (interaction.commandName === “marketpanel”) {
+if (!isAdmin(interaction)) {
+await interaction.reply({
+content: “❌ هذا الأمر للإدارة فقط.”,
+ephemeral: true
+});
+return true;
+}
 
-      await interaction.deferReply({ ephemeral: true });
-
-      if (interaction.commandName === "marketpanel") {
-        await interaction.channel.send({
-          embeds: [marketEmbed()],
-          components: marketPanelComponents()
-        });
-
-        await interaction.editReply("✅ تم إرسال لوحة السوق.");
-      } else {
-        await interaction.channel.send({
-          embeds: [middlemanEmbed()],
-          components: middlemanPanelComponents()
-        });
-
-        await interaction.editReply("✅ تم إرسال لوحة الوسيط.");
-      }
-
-      return true;
-    }
+  await interaction.channel.send(createMarketPanel());
+  await interaction.reply({
+    content: "✅ تم إرسال لوحة مطابقة السوق.",
+    ephemeral: true
+  });
+  return true;
+}
+if (interaction.commandName === "setmiddlemanchannel") {
+  if (!isAdmin(interaction)) {
+    await interaction.reply({
+      content: "❌ هذا الأمر للإدارة فقط.",
+      ephemeral: true
+    });
+    return true;
   }
-
-  if (interaction.isButton()) {
-    if (interaction.customId.startsWith("market_new_")) {
-      const category = interaction.customId.replace("market_new_", "");
-
-      if (!categories[category]) {
-        await interaction.reply({
-          content: "❌ هذا القسم غير معروف.",
-          ephemeral: true
-        });
-        return true;
-      }
-
-      await interaction.showModal(listingModal(category));
-      return true;
-    }
-
-    if (interaction.customId === "market_rules") {
-      await interaction.reply({
-        embeds: [
-          new EmbedBuilder()
-            .setColor(0x5865f2)
-            .setTitle("📜 قوانين السوق")
-            .setDescription(
-              "• يمنع الاحتيال أو انتحال شخصية الآخرين.\n" +
-              "• لا تشارك كلمات المرور أو رموز التحقق.\n" +
-              "• اتفق على السعر والتفاصيل قبل الصفقة.\n" +
-              "• استخدم الوسيط عند الحاجة.\n" +
-              "• تداول حسابات Roblox قد يخالف شروط المنصة."
-            )
-        ],
-        ephemeral: true
-      });
-      return true;
-    }
-
-    if (interaction.customId.startsWith("market_buy_")) {
-      const listingId = interaction.customId.slice("market_buy_".length);
-      const listing = listings.get(listingId);
-
-      if (!listing || listing.status !== "available") {
-        await interaction.reply({
-          content: "❌ هذا الإعلان لم يعد متوفرًا.",
-          ephemeral: true
-        });
-        return true;
-      }
-
-      if (interaction.user.id === listing.sellerId) {
-        await interaction.reply({
-          content: "❌ ما تقدر تشتري إعلانك بنفسك.",
-          ephemeral: true
-        });
-        return true;
-      }
-
-      if (listing.pendingPurchaseId) {
-        await interaction.reply({
-          content: "⏳ يوجد طلب شراء قيد المراجعة لهذا الإعلان.",
-          ephemeral: true
-        });
-        return true;
-      }
-
-      const purchaseId = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
-
-      const purchase = {
-        id: purchaseId,
-        listingId,
-        listingTitle: listing.title,
-        price: listing.price,
-        sellerId: listing.sellerId,
-        buyerId: interaction.user.id,
-        status: "pending",
-        roomId: null
-      };
-
-      purchases.set(purchaseId, purchase);
-      listing.pendingPurchaseId = purchaseId;
-
-      await interaction.reply({
-        content: "✅ تم إرسال طلب الشراء للبائع. انتظر تأكيده.",
-        ephemeral: true
-      });
-
-      const purchaseMessage = await interaction.channel.send({
-        content: `<@${listing.sellerId}>`,
-        embeds: [makePurchaseEmbed(purchase, "⏳ بانتظار تأكيد البائع")],
-        components: purchaseButtons(purchaseId),
-        allowedMentions: { users: [listing.sellerId] }
-      });
-
-      purchase.messageId = purchaseMessage.id;
-      purchase.channelId = interaction.channel.id;
-      return true;
-    }
-
-    if (interaction.customId.startsWith("market_confirm_")) {
-      const purchaseId = interaction.customId.slice("market_confirm_".length);
-      const purchase = purchases.get(purchaseId);
-
-      if (!purchase || purchase.status !== "pending") {
-        await interaction.reply({
-          content: "❌ طلب الشراء غير متاح أو تم التعامل معه مسبقًا.",
-          ephemeral: true
-        });
-        return true;
-      }
-
-      if (interaction.user.id !== purchase.sellerId) {
-        await interaction.reply({
-          content: "❌ زر التأكيد مخصص للبائع فقط.",
-          ephemeral: true
-        });
-        return true;
-      }
-
-      if (creatingRooms.has(purchaseId)) {
-        await interaction.reply({
-          content: "⏳ يتم إنشاء روم الصفقة، انتظر قليلًا.",
-          ephemeral: true
-        });
-        return true;
-      }
-
-      creatingRooms.add(purchaseId);
-      await interaction.deferReply({ ephemeral: true });
-
-      try {
-        const room = await createPrivateRoom(interaction.guild, purchase, "deal");
-
-        purchase.roomId = room.id;
-        purchase.status = "confirmed";
-
-        const listing = listings.get(purchase.listingId);
-        if (listing) listing.status = "reserved";
-
-        await room.send({
-          content: `<@${purchase.buyerId}> <@${purchase.sellerId}>`,
-          embeds: [dealRoomEmbed(purchase)],
-          components: dealRoomButtons(purchaseId),
-          allowedMentions: {
-            users: [purchase.buyerId, purchase.sellerId]
-          }
-        });
-
-        await interaction.message.edit({
-          embeds: [makePurchaseEmbed(purchase, `✅ تم تأكيد البيع • <#${room.id}>`)],
-          components: [
-            new ActionRowBuilder().addComponents(
-              new ButtonBuilder()
-                .setCustomId(`market_done_${purchaseId}`)
-                .setLabel("تم تأكيد البيع")
-                .setStyle(ButtonStyle.Secondary)
-                .setDisabled(true)
-            )
-          ]
-        });
-
-        await interaction.editReply(`✅ تم إنشاء روم الصفقة: <#${room.id}>`);
-      } catch (error) {
-        console.error("MARKET DEAL ROOM ERROR:", error);
-        await interaction.editReply(
-          "❌ ما قدرت أنشئ روم الصفقة. تأكد أن البوت يملك صلاحية Manage Channels."
-        );
-      } finally {
-        creatingRooms.delete(purchaseId);
-      }
-
-      return true;
-    }
-
-    if (interaction.customId.startsWith("market_cancel_")) {
-      const purchaseId = interaction.customId.slice("market_cancel_".length);
-      const purchase = purchases.get(purchaseId);
-
-      if (!purchase || purchase.status !== "pending") {
-        await interaction.reply({
-          content: "❌ هذا الطلب غير متاح.",
-          ephemeral: true
-        });
-        return true;
-      }
-
-      if (
-        interaction.user.id !== purchase.sellerId &&
-        interaction.user.id !== purchase.buyerId
-      ) {
-        await interaction.reply({
-          content: "❌ فقط البائع أو المشتري يقدرون يلغون الطلب.",
-          ephemeral: true
-        });
-        return true;
-      }
-
-      purchase.status = "cancelled";
-
-      const listing = listings.get(purchase.listingId);
-      if (listing) listing.pendingPurchaseId = null;
-
-      await interaction.update({
-        embeds: [makePurchaseEmbed(purchase, "❌ تم إلغاء الطلب")],
-        components: []
-      });
-
-      return true;
-    }
-
-    if (interaction.customId.startsWith("market_close_room_")) {
-      const purchaseId = interaction.customId.slice("market_close_room_".length);
-      const purchase = purchases.get(purchaseId);
-
-      if (!purchase || interaction.channel.id !== purchase.roomId) {
-        await interaction.reply({
-          content: "❌ هذا ليس روم الصفقة الصحيح.",
-          ephemeral: true
-        });
-        return true;
-      }
-
-      const allowed =
-        interaction.user.id === purchase.buyerId ||
-        interaction.user.id === purchase.sellerId ||
-        interaction.user.id === interaction.guild.ownerId ||
-        hasRole(interaction, ADMIN_ROLE_ID) ||
-        hasRole(interaction, OWNER_ROLE_ID);
-
-      if (!allowed) {
-        await interaction.reply({
-          content: "❌ فقط أطراف الصفقة أو الإدارة يقدرون يغلقون الروم.",
-          ephemeral: true
-        });
-        return true;
-      }
-
-      await interaction.reply("🔒 سيتم إغلاق روم الصفقة خلال 5 ثوانٍ.");
-
-      setTimeout(async () => {
-        try {
-          await interaction.channel.delete();
-        } catch (error) {
-          console.error("DEAL ROOM CLOSE ERROR:", error);
-        }
-      }, 5000);
-
-      purchase.status = "closed";
-      return true;
-    }
-
-    if (interaction.customId === "mm_request") {
-      const modal = new ModalBuilder()
-        .setCustomId("mm_request_modal")
-        .setTitle("طلب وسيط");
-
-      const input = new TextInputBuilder()
-        .setCustomId("other_party")
-        .setLabel("منشن الطرف الثاني أو اكتب ID")
-        .setPlaceholder("الصق المنشن الكامل أو Discord ID")
-        .setStyle(TextInputStyle.Short)
-        .setRequired(true)
-        .setMaxLength(30);
-
-      modal.addComponents(new ActionRowBuilder().addComponents(input));
-      await interaction.showModal(modal);
-      return true;
-    }
-
-    if (interaction.customId.startsWith("mm_claim_")) {
-      if (!hasRole(interaction, MIDDLEMAN_ROLE_ID)) {
-        await interaction.reply({
-          content: "❌ هذا الزر مخصص لأعضاء فريق الوسطاء.",
-          ephemeral: true
-        });
-        return true;
-      }
-
-      const requestId = interaction.customId.slice("mm_claim_".length);
-      const request = middlemanRequests.get(requestId);
-
-      if (!request || request.status !== "pending") {
-        await interaction.reply({
-          content: "❌ هذا الطلب غير متاح أو تم استلامه مسبقًا.",
-          ephemeral: true
-        });
-        return true;
-      }
-
-      if (
-        interaction.user.id === request.requesterId ||
-        interaction.user.id === request.otherPartyId
-      ) {
-        await interaction.reply({
-          content: "❌ أحد أطراف المعاملة لا يستطيع استلام الطلب كوسيط.",
-          ephemeral: true
-        });
-        return true;
-      }
-
-      request.mediatorId = interaction.user.id;
-      request.status = "claimed";
-
-      const embed = EmbedBuilder.from(interaction.message.embeds[0])
-        .setColor(0x57f287)
-        .addFields({
-          name: "الوسيط المستلم",
-          value: `<@${interaction.user.id}>`
-        });
-
-      await interaction.message.edit({
-        embeds: [embed],
-        components: middlemanRequestButtons(requestId, true)
-      });
-
-      await interaction.reply({
-        content: "✅ استلمت الطلب. يستطيع أحد الطرفين الآن فتح روم المعاملة.",
-        ephemeral: true
-      });
-
-      return true;
-    }
-
-    if (interaction.customId.startsWith("mm_open_")) {
-      const requestId = interaction.customId.slice("mm_open_".length);
-      const request = middlemanRequests.get(requestId);
-
-      if (!request || request.status !== "claimed") {
-        await interaction.reply({
-          content: "❌ الطلب غير جاهز لفتح الروم.",
-          ephemeral: true
-        });
-        return true;
-      }
-
-      if (
-        ![request.requesterId, request.otherPartyId].includes(interaction.user.id)
-      ) {
-        await interaction.reply({
-          content: "❌ فقط طرفا المعاملة يقدران فتح الروم.",
-          ephemeral: true
-        });
-        return true;
-      }
-
-      if (request.roomId) {
-        await interaction.reply({
-          content: `الروم موجود بالفعل: <#${request.roomId}>`,
-          ephemeral: true
-        });
-        return true;
-      }
-
-      if (creatingRooms.has(requestId)) {
-        await interaction.reply({
-          content: "⏳ يتم إنشاء الروم بالفعل، انتظر قليلًا.",
-          ephemeral: true
-        });
-        return true;
-      }
-
-      creatingRooms.add(requestId);
-      await interaction.deferReply({ ephemeral: true });
-
-      try {
-        const data = {
-          id: requestId,
-          buyerId: request.requesterId,
-          sellerId: request.otherPartyId,
-          mediatorId: request.mediatorId
-        };
-
-        const room = await createPrivateRoom(interaction.guild, data, "middleman");
-
-        request.roomId = room.id;
-        request.status = "open";
-
-        const embed = new EmbedBuilder()
-          .setColor(0x5865f2)
-          .setTitle("『 KAREN RANK ・ MIDDLEMAN ROOM 』")
-          .setDescription(
-            "## 🔒 روم المعاملة الخاص\n\n" +
-            "━━━━━━━━━━━━━━━━━━━━\n\n" +
-            `🧑 **صاحب الطلب:** <@${request.requesterId}>\n` +
-            `🧑 **الطرف الثاني:** <@${request.otherPartyId}>\n` +
-            `🛡️ **الوسيط:** <@${request.mediatorId}>\n\n` +
-            "━━━━━━━━━━━━━━━━━━━━\n\n" +
-            "📌 **التعليمات**\n" +
-            "• اتفقوا على تفاصيل المعاملة بوضوح.\n" +
-            "• لا تشاركوا كلمات المرور أو رموز التحقق.\n" +
-            "• تأكدوا من التسليم قبل إنهاء المعاملة.\n\n" +
-            "الوسيط أو الإدارة يقدرون يغلقون الروم عند الانتهاء."
-          )
-          .setTimestamp();
-
-        const row = new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId(`mm_close_${requestId}`)
-            .setLabel("🔒 إغلاق الروم")
-            .setStyle(ButtonStyle.Danger)
-        );
-
-        await room.send({
-          content:
-            `<@${request.requesterId}> <@${request.otherPartyId}> <@${request.mediatorId}>`,
-          embeds: [embed],
-          components: [row],
-          allowedMentions: {
-            users: [
-              request.requesterId,
-              request.otherPartyId,
-              request.mediatorId
-            ]
-          }
-        });
-
-        await interaction.message.edit({
-          components: [
-            new ActionRowBuilder().addComponents(
-              new ButtonBuilder()
-                .setCustomId(`mm_opened_${requestId}`)
-                .setLabel("تم فتح روم المعاملة")
-                .setStyle(ButtonStyle.Secondary)
-                .setDisabled(true)
-            )
-          ]
-        });
-
-        await interaction.editReply(`✅ تم إنشاء روم المعاملة: <#${room.id}>`);
-      } catch (error) {
-        console.error("MIDDLEMAN ROOM ERROR:", error);
-        await interaction.editReply(
-          "❌ تعذر إنشاء الروم. تأكد أن البوت يملك صلاحية Manage Channels وأن الطرفين موجودان في السيرفر."
-        );
-      } finally {
-        creatingRooms.delete(requestId);
-      }
-
-      return true;
-    }
-
-    if (interaction.customId.startsWith("mm_close_")) {
-      const requestId = interaction.customId.slice("mm_close_".length);
-      const request = middlemanRequests.get(requestId);
-
-      if (!request || request.roomId !== interaction.channel.id) {
-        await interaction.reply({
-          content: "❌ هذا ليس روم المعاملة الصحيح.",
-          ephemeral: true
-        });
-        return true;
-      }
-
-      const allowed =
-        interaction.user.id === request.mediatorId ||
-        interaction.user.id === interaction.guild.ownerId ||
-        hasRole(interaction, ADMIN_ROLE_ID) ||
-        hasRole(interaction, OWNER_ROLE_ID);
-
-      if (!allowed) {
-        await interaction.reply({
-          content: "❌ الوسيط أو الإدارة فقط يقدرون يغلقون الروم.",
-          ephemeral: true
-        });
-        return true;
-      }
-
-      await interaction.reply("🔒 سيتم إغلاق روم المعاملة خلال 5 ثوانٍ.");
-
-      setTimeout(async () => {
-        try {
-          await interaction.channel.delete();
-        } catch (error) {
-          console.error("MIDDLEMAN ROOM CLOSE ERROR:", error);
-        }
-      }, 5000);
-
-      request.status = "closed";
-      return true;
-    }
-  }
-
-  if (interaction.isModalSubmit()) {
-    if (interaction.customId.startsWith("market_listing_")) {
-      const category = interaction.customId.replace("market_listing_", "");
-
-      if (!categories[category]) {
-        await interaction.reply({
-          content: "❌ هذا القسم غير معروف.",
-          ephemeral: true
-        });
-        return true;
-      }
-
-      const title = interaction.fields.getTextInputValue("item_title").trim();
-      const price = interaction.fields.getTextInputValue("item_price").trim();
-      const details = interaction.fields.getTextInputValue("item_details").trim();
-
-      if (!title || !price || !details) {
-        await interaction.reply({
-          content: "❌ املأ جميع الخانات.",
-          ephemeral: true
-        });
-        return true;
-      }
-
-      const listingId = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
-
-      const listing = {
-        id: listingId,
-        category,
-        title,
-        price,
-        details,
-        sellerId: interaction.user.id,
-        status: "available",
-        pendingPurchaseId: null
-      };
-
-      listings.set(listingId, listing);
-
-      await interaction.reply({
-        content: "✅ تم نشر إعلانك في هذا الروم.",
-        ephemeral: true
-      });
-
-      await interaction.channel.send({
-        embeds: [makeListingEmbed(listing)],
-        components: listingButtons(listingId)
-      });
-
-      return true;
-    }
-
-    if (interaction.customId === "mm_request_modal") {
-      const input = interaction.fields.getTextInputValue("other_party").trim();
-      const otherPartyId = getUserId(input);
-
-      if (!otherPartyId) {
-        await interaction.reply({
-          content: "❌ ما قدرت أقرأ المنشن. الصق المنشن الكامل مثل `<@123456789012345678>` أو اكتب Discord ID فقط.",
-          ephemeral: true
-        });
-        return true;
-      }
-
-      if (otherPartyId === interaction.user.id) {
-        await interaction.reply({
-          content: "❌ ما تقدر تطلب وسيط لنفسك.",
-          ephemeral: true
-        });
-        return true;
-      }
-
-      let otherParty;
-
-      try {
-        otherParty = await interaction.guild.members.fetch(otherPartyId);
-      } catch {
-        await interaction.reply({
-          content: "❌ ما لقيت الطرف الثاني داخل هذا السيرفر. تأكد من الـID.",
-          ephemeral: true
-        });
-        return true;
-      }
-
-      const requestId = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
-
-      const request = {
-        id: requestId,
-        requesterId: interaction.user.id,
-        otherPartyId: otherParty.id,
-        mediatorId: null,
-        roomId: null,
-        status: "pending"
-      };
-
-      middlemanRequests.set(requestId, request);
-
-      const embed = new EmbedBuilder()
-        .setColor(0xf1c40f)
-        .setTitle("『 طلب وسيط جديد 』")
-        .setDescription(
-          `🧑 **صاحب الطلب:** <@${interaction.user.id}>\n` +
-          `🧑 **الطرف الثاني:** <@${otherParty.id}>\n\n` +
-          "**الحالة:** ⏳ بانتظار استلام وسيط.\n\n" +
-          "أعضاء فريق الوسطاء فقط يستطيعون استلام الطلب."
-        )
-        .setFooter({ text: `Request ID: ${requestId}` })
-        .setTimestamp();
-
-      await interaction.reply({
-        content: "✅ تم إرسال طلبك لفريق الوسطاء.",
-        ephemeral: true
-      });
-
-      try {
-        await interaction.channel.send({
-          content: `<@&${MIDDLEMAN_ROLE_ID}>`,
-          embeds: [embed],
-          components: middlemanRequestButtons(requestId),
-          allowedMentions: { roles: [MIDDLEMAN_ROLE_ID] }
-        });
-      } catch (error) {
-        middlemanRequests.delete(requestId);
-        console.error("MIDDLEMAN REQUEST SEND ERROR:", error);
-
-        await interaction.followUp({
-          content: "❌ تعذر إرسال الطلب. تأكد من صلاحيات البوت.",
-          ephemeral: true
-        });
-      }
-
-      return true;
-    }
-  }
-
-  return false;
+  const channel = interaction.options.getChannel("channel");
+  mediationChannelId = channel.id;
+  await interaction.reply({
+    content: `✅ تم تحديد روم الوساطة: ${channel}`,
+    ephemeral: true
+  });
+  return true;
+}
+return false;
+
+}
+
+if (interaction.isStringSelectMenu()) {
+if (interaction.customId !== “market:select”) return false;
+
+const type = interaction.values[0];
+if (!getCategory(type)) {
+  await interaction.reply({
+    content: "❌ نوع الطلب غير صحيح.",
+    ephemeral: true
+  });
+  return true;
+}
+await interaction.deferReply({ ephemeral: true });
+await findMatch(interaction, type);
+return true;
+
+}
+
+if (interaction.isButton()) {
+const parts = interaction.customId.split(”:”);
+
+if (parts[0] !== "market") return false;
+if (parts[1] === "choice") {
+  await handleChoice(interaction, parts[3], parts[2]);
+  return true;
+}
+if (parts[1] === "requestmediator") {
+  await requestMediator(interaction, parts[2]);
+  return true;
+}
+
+}
+
+return false;
 }
 
 module.exports = {
-  commands,
-  handleInteraction
+commands,
+handleInteraction
 };

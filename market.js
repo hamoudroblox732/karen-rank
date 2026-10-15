@@ -44,7 +44,6 @@ function categoryName(id) {
 
 function isStaff(member, guild) {
     if (!member) return false;
-
     if (member.id === guild.ownerId) return true;
 
     if (member.permissions.has(PermissionFlagsBits.Administrator)) {
@@ -220,8 +219,10 @@ async function createTransactionChannel(guild, deal, mediatorId = null) {
             });
         }
 
-        if (DEVELOPMENT_ROLE_ID &&
-            guild.roles.cache.has(DEVELOPMENT_ROLE_ID)) {
+        if (
+            DEVELOPMENT_ROLE_ID &&
+            guild.roles.cache.has(DEVELOPMENT_ROLE_ID)
+        ) {
             overwrites.push({
                 id: DEVELOPMENT_ROLE_ID,
                 allow: [
@@ -240,7 +241,6 @@ async function createTransactionChannel(guild, deal, mediatorId = null) {
             permissionOverwrites: overwrites
         });
 
-        // لا تُعتبر الصفقة جاهزة إلا بعد إرسال الـ Embed بنجاح.
         await channel.send({
             embeds: [transactionRulesEmbed(deal, mediatorId)],
             components: [transactionButtons(deal.id)],
@@ -259,7 +259,6 @@ async function createTransactionChannel(guild, deal, mediatorId = null) {
     } catch (error) {
         logError("فشل إنشاء الروم أو إرسال Embed الصفقة", error);
 
-        // إذا أُنشئ الروم وفشل إرسال الـ Embed، نحذف الروم الفاضي.
         if (channel) {
             try {
                 await channel.delete("فشل إعداد غرفة الصفقة");
@@ -554,7 +553,7 @@ async function handleInteraction(interaction) {
             deal.status = "active";
 
             return interaction.followUp({
-                content: `✅ تم تجهيز الصفقة وإرسال الـ Embed: ${channel}`,
+                content: `✅ تمت مطابقة الصفقة بنجاح\n📍 روم الصفقة: ${channel}`,
                 ephemeral: true
             });
         } catch (error) {
@@ -664,12 +663,10 @@ async function handleInteraction(interaction) {
             });
         }
 
-        const member = interaction.member;
-
         const allowed =
             deal.users.includes(interaction.user.id) ||
             deal.mediatorId === interaction.user.id ||
-            isStaff(member, interaction.guild);
+            isStaff(interaction.member, interaction.guild);
 
         if (!allowed) {
             return interaction.reply({

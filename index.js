@@ -12,7 +12,7 @@ StringSelectMenuBuilder,
 ButtonBuilder,
 ButtonStyle,
 WebhookClient
-} = require(“discord.js”);
+} = require("discord.js");
 
 const fs = require(“fs”);
 const path = require(“path”);

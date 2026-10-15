@@ -31,14 +31,25 @@ const closingDeals = new Set();
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+function logError(label, error) {
+    console.error(`[MARKET] ${label}`);
+    console.error("Code:", error?.code ?? "Unknown");
+    console.error("Message:", error?.message ?? error);
+    if (error?.rawError) console.error("Discord error:", error.rawError);
+}
+
 function categoryName(id) {
-    return categories.find(c => c.id === id)?.label || "صفقة";
+    return categories.find(category => category.id === id)?.label || "صفقة";
 }
 
 function isStaff(member, guild) {
     if (!member) return false;
+
     if (member.id === guild.ownerId) return true;
-    if (member.permissions.has(PermissionFlagsBits.Administrator)) return true;
+
+    if (member.permissions.has(PermissionFlagsBits.Administrator)) {
+        return true;
+    }
 
     return Boolean(
         DEVELOPMENT_ROLE_ID &&
@@ -47,19 +58,18 @@ function isStaff(member, guild) {
 }
 
 function isMiddleman(member) {
-    if (!member) return false;
+    if (!member?.roles?.cache) return false;
 
-    const roles = member.roles?.cache;
-    if (!roles) return false;
-
-    return roles.some(role =>
-        role.name.trim().toLowerCase() === MIDDLEMAN_ROLE_NAME.toLowerCase()
+    return member.roles.cache.some(role =>
+        role.name.normalize("NFKC").trim().toLowerCase() ===
+        MIDDLEMAN_ROLE_NAME.toLowerCase()
     );
 }
 
 function getMiddlemanRole(guild) {
     return guild.roles.cache.find(role =>
-        role.name.trim().toLowerCase() === MIDDLEMAN_ROLE_NAME.toLowerCase()
+        role.name.normalize("NFKC").trim().toLowerCase() ===
+        MIDDLEMAN_ROLE_NAME.toLowerCase()
     ) || null;
 }
 
@@ -71,11 +81,11 @@ function categoryMenu() {
             .setMinValues(1)
             .setMaxValues(1)
             .addOptions(
-                categories.map(c => ({
-                    label: c.label,
-                    value: c.id,
-                    emoji: c.emoji,
-                    description: `الدخول في قائمة ${c.label}`
+                categories.map(category => ({
+                    label: category.label,
+                    value: category.id,
+                    emoji: category.emoji,
+                    description: `الدخول في قائمة ${category.label}`
                 }))
             )
     );
@@ -99,9 +109,16 @@ function mediatorChoiceRow(dealId) {
 function transactionRulesEmbed(deal, mediatorId) {
     return new EmbedBuilder()
         .setColor(mediatorId ? 0x3498DB : 0x2ECC71)
-        .setTitle(mediatorId ? "🛡️ غرفة وساطة رسمية" : "🤝 غرفة البيع والشراء")
+        .setTitle(
+            mediatorId
+                ? "🛡️ غرفة وساطة رسمية"
+                : "🤝 غرفة البيع والشراء"
+        )
         .setDescription([
             "أهلًا بكم في غرفة إتمام الصفقة!",
+            "",
+            "━━━━━━━━━━━━━━━━━━",
+            "📋 **تفاصيل الصفقة**",
             "",
             `**نوع الصفقة:** ${categoryName(deal.category)}`,
             `**الطرف الأول:** <@${deal.users[0]}>`,
@@ -115,15 +132,15 @@ function transactionRulesEmbed(deal, mediatorId) {
             "2. يمنع الاحتيال أو انتحال الشخصية.",
             "3. لا تشاركوا كلمات المرور أو المعلومات السرية.",
             "4. احتفظوا بإثباتات الاتفاق عند الحاجة.",
-            "5. لا تضغطوا على إكمال الشراء قبل انتهاء الصفقة.",
-            "6. عند وجود مشكلة، اطلبوا مساعدة الإدارة.",
+            "5. لا تؤكدوا إكمال الصفقة قبل انتهائها.",
+            "6. عند حدوث مشكلة، تواصلوا مع الإدارة.",
             mediatorId
-                ? "7. لا تشاركوا بيانات حساباتكم السرية مع الوسيط."
-                : "7. الصفقة بدون وسيط؛ تأكدوا من الطرف الآخر قبل المتابعة.",
+                ? "7. لا تشاركوا بيانات حساباتكم السرية مع أي شخص."
+                : "7. هذه الصفقة بدون وسيط؛ تعاملوا بحذر.",
             "",
             "━━━━━━━━━━━━━━━━━━",
-            "✅ استخدموا زر إكمال الشراء بعد انتهاء الصفقة.",
-            "🔒 استخدموا زر إغلاق الروم لإنهاء الغرفة."
+            "اضغط **تم إكمال الشراء** بعد انتهاء الصفقة.",
+            "اضغط **إغلاق الروم** لإنهاء الغرفة."
         ].join("\n"))
         .setFooter({ text: "Karen Rank • Market" })
         .setTimestamp();
@@ -145,122 +162,124 @@ function transactionButtons(dealId) {
 }
 
 async function createTransactionChannel(guild, deal, mediatorId = null) {
-    const botMember = guild.members.me || await guild.members.fetchMe();
-    const middlemanRole = getMiddlemanRole(guild);
+    let channel = null;
 
-    const overwrites = [
-        {
-            id: guild.roles.everyone.id,
-            deny: [PermissionFlagsBits.ViewChannel]
-        },
-        {
-            id: botMember.id,
-            allow: [
-                PermissionFlagsBits.ViewChannel,
-                PermissionFlagsBits.SendMessages,
-                PermissionFlagsBits.ReadMessageHistory,
-                PermissionFlagsBits.ManageChannels,
-                PermissionFlagsBits.ManageMessages,
-                PermissionFlagsBits.EmbedLinks
-            ]
-        },
-        {
-            id: guild.ownerId,
-            allow: [
-                PermissionFlagsBits.ViewChannel,
-                PermissionFlagsBits.SendMessages,
-                PermissionFlagsBits.ReadMessageHistory,
-                PermissionFlagsBits.ManageMessages
-            ]
+    try {
+        const botMember = guild.members.me || await guild.members.fetchMe();
+        const middlemanRole = getMiddlemanRole(guild);
+
+        const overwrites = [
+            {
+                id: guild.roles.everyone.id,
+                deny: [PermissionFlagsBits.ViewChannel]
+            },
+            {
+                id: botMember.id,
+                allow: [
+                    PermissionFlagsBits.ViewChannel,
+                    PermissionFlagsBits.SendMessages,
+                    PermissionFlagsBits.ReadMessageHistory,
+                    PermissionFlagsBits.ManageChannels,
+                    PermissionFlagsBits.ManageMessages,
+                    PermissionFlagsBits.EmbedLinks
+                ]
+            },
+            {
+                id: guild.ownerId,
+                allow: [
+                    PermissionFlagsBits.ViewChannel,
+                    PermissionFlagsBits.SendMessages,
+                    PermissionFlagsBits.ReadMessageHistory,
+                    PermissionFlagsBits.ManageMessages
+                ]
+            }
+        ];
+
+        for (const userId of deal.users) {
+            overwrites.push({
+                id: userId,
+                allow: [
+                    PermissionFlagsBits.ViewChannel,
+                    PermissionFlagsBits.SendMessages,
+                    PermissionFlagsBits.ReadMessageHistory,
+                    PermissionFlagsBits.AttachFiles,
+                    PermissionFlagsBits.EmbedLinks
+                ]
+            });
         }
-    ];
 
-    for (const userId of deal.users) {
-        overwrites.push({
-            id: userId,
-            allow: [
-                PermissionFlagsBits.ViewChannel,
-                PermissionFlagsBits.SendMessages,
-                PermissionFlagsBits.ReadMessageHistory,
-                PermissionFlagsBits.AttachFiles,
-                PermissionFlagsBits.EmbedLinks
-            ]
-        });
-    }
-
-    if (mediatorId) {
-        overwrites.push({
-            id: mediatorId,
-            allow: [
-                PermissionFlagsBits.ViewChannel,
-                PermissionFlagsBits.SendMessages,
-                PermissionFlagsBits.ReadMessageHistory,
-                PermissionFlagsBits.ManageMessages
-            ]
-        });
-    }
-
-    if (middlemanRole && mediatorId) {
-        overwrites.push({
-            id: middlemanRole.id,
-            deny: [PermissionFlagsBits.ViewChannel]
-        });
-    }
-
-    if (DEVELOPMENT_ROLE_ID && guild.roles.cache.has(DEVELOPMENT_ROLE_ID)) {
-        overwrites.push({
-            id: DEVELOPMENT_ROLE_ID,
-            allow: [
-                PermissionFlagsBits.ViewChannel,
-                PermissionFlagsBits.SendMessages,
-                PermissionFlagsBits.ReadMessageHistory,
-                PermissionFlagsBits.ManageMessages
-            ]
-        });
-    }
-
-    const channel = await guild.channels.create({
-        name: `deal-${deal.users[0].slice(-4)}-${deal.users[1].slice(-4)}`,
-        type: ChannelType.GuildText,
-        topic: `صفقة ${deal.id} | ${categoryName(deal.category)}`,
-        permissionOverwrites: overwrites
-    });
-
-    deal.channelId = channel.id;
-    deal.mediatorId = mediatorId;
-    deals.set(deal.id, deal);
-
-    await channel.send({
-        content: [
-            `<@${deal.users[0]}>`,
-            `<@${deal.users[1]}>`,
-            mediatorId ? `<@${mediatorId}>` : null,
-            `<@${guild.ownerId}>`,
-            DEVELOPMENT_ROLE_ID &&
-            guild.roles.cache.has(DEVELOPMENT_ROLE_ID)
-                ? `<@&${DEVELOPMENT_ROLE_ID}>`
-                : null
-        ].filter(Boolean).join(" "),
-        embeds: [transactionRulesEmbed(deal, mediatorId)],
-        components: [transactionButtons(deal.id)],
-        allowedMentions: {
-            users: [
-                ...deal.users,
-                ...(mediatorId ? [mediatorId] : []),
-                guild.ownerId
-            ],
-            roles: DEVELOPMENT_ROLE_ID ? [DEVELOPMENT_ROLE_ID] : []
+        if (mediatorId) {
+            overwrites.push({
+                id: mediatorId,
+                allow: [
+                    PermissionFlagsBits.ViewChannel,
+                    PermissionFlagsBits.SendMessages,
+                    PermissionFlagsBits.ReadMessageHistory,
+                    PermissionFlagsBits.ManageMessages
+                ]
+            });
         }
-    });
 
-    return channel;
+        if (DEVELOPMENT_ROLE_ID &&
+            guild.roles.cache.has(DEVELOPMENT_ROLE_ID)) {
+            overwrites.push({
+                id: DEVELOPMENT_ROLE_ID,
+                allow: [
+                    PermissionFlagsBits.ViewChannel,
+                    PermissionFlagsBits.SendMessages,
+                    PermissionFlagsBits.ReadMessageHistory,
+                    PermissionFlagsBits.ManageMessages
+                ]
+            });
+        }
+
+        channel = await guild.channels.create({
+            name: `deal-${deal.users[0].slice(-4)}-${deal.users[1].slice(-4)}`,
+            type: ChannelType.GuildText,
+            topic: `صفقة ${deal.id} | ${categoryName(deal.category)}`,
+            permissionOverwrites: overwrites
+        });
+
+        // لا تُعتبر الصفقة جاهزة إلا بعد إرسال الـ Embed بنجاح.
+        await channel.send({
+            embeds: [transactionRulesEmbed(deal, mediatorId)],
+            components: [transactionButtons(deal.id)],
+            allowedMentions: {
+                parse: [],
+                users: [],
+                roles: []
+            }
+        });
+
+        deal.channelId = channel.id;
+        deal.mediatorId = mediatorId;
+        deals.set(deal.id, deal);
+
+        return channel;
+    } catch (error) {
+        logError("فشل إنشاء الروم أو إرسال Embed الصفقة", error);
+
+        // إذا أُنشئ الروم وفشل إرسال الـ Embed، نحذف الروم الفاضي.
+        if (channel) {
+            try {
+                await channel.delete("فشل إعداد غرفة الصفقة");
+            } catch (deleteError) {
+                logError("تعذر حذف الروم الفارغ", deleteError);
+            }
+        }
+
+        throw error;
+    }
 }
 
 async function postMediatorRequest(guild, deal) {
     if (!middlemanChannelId) return null;
 
     const channel = guild.channels.cache.get(middlemanChannelId);
-    if (!channel || !channel.isTextBased()) return null;
+
+    if (!channel || !channel.isTextBased() || !channel.send) {
+        return null;
+    }
 
     const middlemanRole = getMiddlemanRole(guild);
 
@@ -274,8 +293,7 @@ async function postMediatorRequest(guild, deal) {
             `**الطرف الأول:** <@${deal.users[0]}>`,
             `**الطرف الثاني:** <@${deal.users[1]}>`,
             "",
-            "اضغط زر استلام الوساطة إذا كنت من رتبة MM Service.",
-            "بعد الاستلام، ستُفتح غرفة خاصة بالوسيط والطرفين والإدارة."
+            "اضغط زر استلام الوساطة إذا كنت من رتبة MM Service."
         ].join("\n"))
         .setFooter({ text: "Karen Rank • طلب وساطة" })
         .setTimestamp();
@@ -289,11 +307,13 @@ async function postMediatorRequest(guild, deal) {
     );
 
     return channel.send({
-        content: middlemanRole ? `<@&${middlemanRole.id}>` : "",
+        content: middlemanRole ? `<@&${middlemanRole.id}>` : undefined,
         embeds: [embed],
         components: [row],
         allowedMentions: {
-            roles: middlemanRole ? [middlemanRole.id] : []
+            parse: [],
+            roles: middlemanRole ? [middlemanRole.id] : [],
+            users: []
         }
     });
 }
@@ -320,7 +340,9 @@ const commands = [
 async function handleInteraction(interaction) {
     if (interaction.isChatInputCommand()) {
         if (interaction.commandName === "marketpanel") {
-            if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+            if (!interaction.memberPermissions?.has(
+                PermissionFlagsBits.Administrator
+            )) {
                 return interaction.reply({
                     content: "❌ هذا الأمر للإدارة فقط.",
                     ephemeral: true
@@ -348,14 +370,17 @@ async function handleInteraction(interaction) {
         }
 
         if (interaction.commandName === "setmiddlemanchannel") {
-            if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+            if (!interaction.memberPermissions?.has(
+                PermissionFlagsBits.Administrator
+            )) {
                 return interaction.reply({
                     content: "❌ هذا الأمر للإدارة فقط.",
                     ephemeral: true
                 });
             }
 
-            middlemanChannelId = interaction.options.getChannel("channel").id;
+            middlemanChannelId =
+                interaction.options.getChannel("channel").id;
 
             return interaction.reply({
                 content: `✅ تم تحديد روم طلبات الوساطة: <#${middlemanChannelId}>`,
@@ -370,16 +395,18 @@ async function handleInteraction(interaction) {
     ) {
         const category = interaction.values[0];
         const userId = interaction.user.id;
+        const queue = queues.get(category) || [];
 
-        if (queues.get(category)?.some(item => item.userId === userId)) {
+        if (queue.some(item => item.userId === userId)) {
             return interaction.reply({
                 content: "⚠️ أنت موجود بالفعل في قائمة انتظار هذا النوع.",
                 ephemeral: true
             });
         }
 
-        const queue = queues.get(category) || [];
-        const otherIndex = queue.findIndex(item => item.userId !== userId);
+        const otherIndex = queue.findIndex(
+            item => item.userId !== userId
+        );
 
         if (otherIndex === -1) {
             queue.push({ userId, interaction });
@@ -401,23 +428,25 @@ async function handleInteraction(interaction) {
             category,
             users: [other.userId, userId],
             choices: new Map(),
-            status: "choosing"
+            status: "choosing",
+            channelId: null,
+            mediatorId: null
         };
 
         deals.set(dealId, deal);
 
         try {
             await other.interaction.followUp({
-                content: "🤝 تمت مطابقتك! اختروا هل تريدون إتمام الصفقة مع وسيط أو بدونه.",
+                content: "🤝 تمت مطابقتك! اختر مع وسيط أو بدون وسيط.",
                 components: [mediatorChoiceRow(dealId)],
                 ephemeral: true
             });
         } catch (error) {
-            console.error("Could not notify first player:", error);
+            logError("تعذر إشعار اللاعب الأول بالمطابقة", error);
         }
 
         return interaction.reply({
-            content: "🤝 تمت المطابقة! اختر هل تريد إتمام الصفقة مع وسيط أو بدونه.",
+            content: "🤝 تمت المطابقة! اختر مع وسيط أو بدون وسيط.",
             components: [mediatorChoiceRow(dealId)],
             ephemeral: true
         });
@@ -432,11 +461,10 @@ async function handleInteraction(interaction) {
         id.startsWith("market_mediator_no_")
     ) {
         const useMediator = id.startsWith("market_mediator_yes_");
-        const dealId = id.replace(
-            useMediator ? "market_mediator_yes_" : "market_mediator_no_",
-            ""
-        );
-
+        const prefix = useMediator
+            ? "market_mediator_yes_"
+            : "market_mediator_no_";
+        const dealId = id.slice(prefix.length);
         const deal = deals.get(dealId);
 
         if (!deal || deal.status !== "choosing") {
@@ -476,7 +504,7 @@ async function handleInteraction(interaction) {
             deals.delete(dealId);
 
             return interaction.followUp({
-                content: "⚠️ اختيارات الطرفين مختلفة. ارجعوا إلى لوحة السوق وحاولوا المطابقة من جديد.",
+                content: "⚠️ اختياراتكم مختلفة. ارجعوا إلى لوحة السوق وابدؤوا مطابقة جديدة.",
                 ephemeral: true
             });
         }
@@ -485,13 +513,16 @@ async function handleInteraction(interaction) {
 
         if (choices[0]) {
             try {
-                const request = await postMediatorRequest(interaction.guild, deal);
+                const request = await postMediatorRequest(
+                    interaction.guild,
+                    deal
+                );
 
                 if (!request) {
                     deal.status = "choosing";
 
                     return interaction.followUp({
-                        content: "❌ لم يتم إعداد روم الوساطة. استخدم `/setmiddlemanchannel` لتحديد روم استقبال الطلبات.",
+                        content: "❌ لم يتم إعداد روم الوساطة. استخدم `/setmiddlemanchannel` لتحديد الروم أولًا.",
                         ephemeral: true
                     });
                 }
@@ -499,15 +530,15 @@ async function handleInteraction(interaction) {
                 deal.status = "waiting_mediator";
 
                 return interaction.followUp({
-                    content: "🛡️ تم إرسال طلب الوساطة في روم الوسطاء. انتظر حتى يستلم أحدهم الطلب.",
+                    content: "🛡️ تم إرسال طلب الوساطة. انتظر حتى يستلمه وسيط.",
                     ephemeral: true
                 });
             } catch (error) {
-                console.error("Mediator request failed:", error);
+                logError("فشل إرسال طلب الوساطة", error);
                 deal.status = "choosing";
 
                 return interaction.followUp({
-                    content: "❌ تعذر إرسال طلب الوساطة. تأكد من صلاحيات البوت في روم الوساطة.",
+                    content: `❌ تعذر إرسال طلب الوساطة. السبب: ${error.message || "خطأ غير معروف"}`,
                     ephemeral: true
                 });
             }
@@ -523,22 +554,22 @@ async function handleInteraction(interaction) {
             deal.status = "active";
 
             return interaction.followUp({
-                content: `✅ تم فتح روم الصفقة بدون وسيط: ${channel}`,
+                content: `✅ تم تجهيز الصفقة وإرسال الـ Embed: ${channel}`,
                 ephemeral: true
             });
         } catch (error) {
-            console.error("Could not create transaction channel:", error);
+            logError("فشل إنشاء صفقة بدون وسيط", error);
             deals.delete(dealId);
 
             return interaction.followUp({
-                content: "❌ تعذر فتح الروم. تأكد من صلاحية Manage Channels وأن رتبة البوت تسمح له بإنشاء القنوات.",
+                content: `❌ فشل تجهيز الصفقة. السبب: ${error.message || "خطأ غير معروف"}. راجع سجل البوت لمعرفة رمز خطأ Discord.`,
                 ephemeral: true
             });
         }
     }
 
     if (id.startsWith("market_claim_")) {
-        const dealId = id.replace("market_claim_", "");
+        const dealId = id.slice("market_claim_".length);
         const deal = deals.get(dealId);
 
         if (!deal || deal.status !== "waiting_mediator") {
@@ -551,9 +582,11 @@ async function handleInteraction(interaction) {
         let member;
 
         try {
-            member = await interaction.guild.members.fetch(interaction.user.id);
+            member = await interaction.guild.members.fetch(
+                interaction.user.id
+            );
         } catch (error) {
-            console.error("Could not fetch mediator member:", error);
+            logError("تعذر جلب بيانات الوسيط", error);
 
             return interaction.reply({
                 content: "❌ لم أستطع التحقق من رتبك. حاول مرة أخرى.",
@@ -568,7 +601,7 @@ async function handleInteraction(interaction) {
                 .join(", ");
 
             return interaction.reply({
-                content: `❌ زر الاستلام مخصص لرتبة **MM Service**.\nالرتب التي أراها عندك: ${roleNames || "لا توجد رتب ظاهرة"}`,
+                content: `❌ الاستلام مخصص لرتبة **MM Service**.\nالرتب التي أراها: ${roleNames || "لا توجد رتب ظاهرة"}`,
                 ephemeral: true
             });
         }
@@ -592,13 +625,13 @@ async function handleInteraction(interaction) {
 
             deal.status = "active";
 
-            await interaction.update({
+            return interaction.update({
                 embeds: [
                     new EmbedBuilder()
                         .setColor(0x2ECC71)
                         .setTitle("✅ تم استلام الوساطة")
                         .setDescription([
-                            `**الوسيط:** ${interaction.user}`,
+                            `**الوسيط:** <@${interaction.user.id}>`,
                             `**الطرف الأول:** <@${deal.users[0]}>`,
                             `**الطرف الثاني:** <@${deal.users[1]}>`,
                             `**روم الصفقة:** ${channel}`
@@ -608,22 +641,20 @@ async function handleInteraction(interaction) {
                 components: []
             });
         } catch (error) {
-            console.error("Could not create mediated channel:", error);
+            logError("فشل تجهيز صفقة الوساطة", error);
 
             claimedRequests.delete(dealId);
             deal.status = "waiting_mediator";
 
             return interaction.reply({
-                content: "❌ فشل إنشاء روم الوساطة. تأكد من صلاحية Manage Channels وأن رتبة البوت تسمح له بإنشاء القنوات.",
+                content: `❌ تعذر تجهيز روم الوساطة. السبب: ${error.message || "خطأ غير معروف"}. راجع سجل البوت.`,
                 ephemeral: true
             });
         }
-
-        return;
     }
 
     if (id.startsWith("market_complete_")) {
-        const dealId = id.replace("market_complete_", "");
+        const dealId = id.slice("market_complete_".length);
         const deal = deals.get(dealId);
 
         if (!deal || deal.status !== "active") {
@@ -633,10 +664,12 @@ async function handleInteraction(interaction) {
             });
         }
 
+        const member = interaction.member;
+
         const allowed =
             deal.users.includes(interaction.user.id) ||
             deal.mediatorId === interaction.user.id ||
-            isStaff(interaction.member, interaction.guild);
+            isStaff(member, interaction.guild);
 
         if (!allowed) {
             return interaction.reply({
@@ -654,7 +687,7 @@ async function handleInteraction(interaction) {
                 `**الطرف الأول:** <@${deal.users[0]}>`,
                 `**الطرف الثاني:** <@${deal.users[1]}>`,
                 `**الوسيط:** ${deal.mediatorId ? `<@${deal.mediatorId}>` : "بدون وسيط"}`,
-                `**تم التأكيد بواسطة:** ${interaction.user}`,
+                `**تم التأكيد بواسطة:** <@${interaction.user.id}>`,
                 "",
                 "يمكن إغلاق الروم عند الانتهاء."
             ].join("\n"))
@@ -675,7 +708,7 @@ async function handleInteraction(interaction) {
     }
 
     if (id.startsWith("market_close_")) {
-        const dealId = id.replace("market_close_", "");
+        const dealId = id.slice("market_close_".length);
         const deal = deals.get(dealId);
 
         if (!deal || closingDeals.has(dealId)) {
@@ -701,18 +734,20 @@ async function handleInteraction(interaction) {
         deal.status = "closing";
 
         await interaction.reply({
-            content: "🔒 سيتم إغلاق هذا الروم خلال **5 ثوانٍ**..."
+            content: "🔒 سيتم إغلاق الروم خلال 5 ثوانٍ."
         });
 
-        for (let seconds = 5; seconds >= 1; seconds--) {
+        for (let seconds = 4; seconds >= 1; seconds--) {
+            await sleep(1000);
+
             try {
                 await interaction.editReply({
-                    content: `🔒 سيتم إغلاق هذا الروم خلال **${seconds} ${seconds === 1 ? "ثانية" : "ثوانٍ"}**...`
+                    content: `🔒 سيتم إغلاق الروم خلال ${seconds} ${seconds === 1 ? "ثانية" : "ثوانٍ"}.`
                 });
             } catch {}
-
-            await sleep(1000);
         }
+
+        await sleep(1000);
 
         const channel = interaction.channel;
 
@@ -721,12 +756,9 @@ async function handleInteraction(interaction) {
         closingDeals.delete(dealId);
 
         if (channel) {
-            await channel.delete("تم إغلاق الصفقة بعد العد التنازلي").catch(error => {
-                console.error("Could not delete transaction channel:", error);
-            });
+            await channel.delete("تم إغلاق الصفقة بعد العد التنازلي")
+                .catch(error => logError("تعذر حذف روم الصفقة", error));
         }
-
-        return;
     }
 }
 

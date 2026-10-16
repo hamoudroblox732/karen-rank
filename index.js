@@ -1,3 +1,4 @@
+
 const {
   Client,
   GatewayIntentBits,
@@ -16,12 +17,15 @@ const {
 const fs = require("fs");
 const moderation = require("./moderation.js");
 const market = require("./market.js");
+
 const TOKEN = process.env.TOKEN;
 const GUILD_ID = process.env.GUILD_ID;
 const DEVELOPMENT_ROLE_ID = process.env.DEVELOPMENT_ROLE_ID;
+
 if (!TOKEN) {
   throw new Error("Missing TOKEN environment variable.");
 }
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -30,13 +34,16 @@ const client = new Client({
   ],
   partials: [Partials.Channel]
 });
+
 const queue = [];
 const matches = new Map();
 const closingMatches = new Set();
 const submittedResults = new Set();
 const closingMessageCleanup = new Set();
 const leaderboardFile = "./leaderboard.json";
+
 let leaderboard = {};
+
 if (fs.existsSync(leaderboardFile)) {
   try {
     leaderboard = JSON.parse(
@@ -47,18 +54,21 @@ if (fs.existsSync(leaderboardFile)) {
     leaderboard = {};
   }
 }
+
 function saveLeaderboard() {
   fs.writeFileSync(
     leaderboardFile,
     JSON.stringify(leaderboard, null, 2)
   );
 }
+
 function isOwner(interaction) {
   return Boolean(
     interaction.guild &&
     interaction.user.id === interaction.guild.ownerId
   );
 }
+
 function validRobloxLink(link) {
   try {
     const url = new URL(link);
@@ -73,11 +83,14 @@ function validRobloxLink(link) {
     return false;
   }
 }
+
 function parseScore(input) {
   const result = input.trim().match(/^(\d+)\s*[-:]\s*(\d+)$/);
   if (!result) return null;
+
   const player1Score = Number(result[1]);
   const player2Score = Number(result[2]);
+
   if (
     !Number.isSafeInteger(player1Score) ||
     !Number.isSafeInteger(player2Score) ||
@@ -85,11 +98,13 @@ function parseScore(input) {
   ) {
     return null;
   }
+
   return {
     player1Score,
     player2Score
   };
 }
+
 function ensurePlayer(userId) {
   if (!leaderboard[userId]) {
     leaderboard[userId] = {
@@ -100,14 +115,18 @@ function ensurePlayer(userId) {
       roundsLost: 0
     };
   }
+
   const player = leaderboard[userId];
+
   if (typeof player.points !== "number") player.points = 0;
   if (typeof player.wins !== "number") player.wins = 0;
   if (typeof player.losses !== "number") player.losses = 0;
   if (typeof player.roundsWon !== "number") player.roundsWon = 0;
   if (typeof player.roundsLost !== "number") player.roundsLost = 0;
+
   return player;
 }
+
 function getLeaderboardSorted() {
   return Object.entries(leaderboard)
     .filter(([key, value]) =>
@@ -123,13 +142,16 @@ function getLeaderboardSorted() {
       a[0].localeCompare(b[0])
     );
 }
+
 function createLeaderboardEmbed() {
   const sorted = getLeaderboardSorted();
+
   const description = sorted.length === 0
     ? "## No Results Yet\n\nNo matches have been completed yet."
     : sorted.slice(0, 25).map(([userId, data], index) => {
         const position =
           ["🥇", "🥈", "🥉"][index] || `**${index + 1}.**`;
+
         return (
           `${position} <@${userId}>\n` +
           `> **${data.points}** Points • **${data.wins}** Wins • ` +
@@ -138,6 +160,7 @@ function createLeaderboardEmbed() {
           `**${data.roundsLost}** Rounds Lost`
         );
       }).join("\n\n");
+
   return new EmbedBuilder()
     .setTitle("KAREN RANK")
     .setDescription(
@@ -149,6 +172,7 @@ function createLeaderboardEmbed() {
     })
     .setTimestamp();
 }
+
 function createWaitingEmbed() {
   return new EmbedBuilder()
     .setTitle("KAREN RANK")
@@ -169,6 +193,7 @@ function createWaitingEmbed() {
     })
     .setTimestamp();
 }
+
 function mainPanel() {
   return {
     embeds: [createWaitingEmbed()],
@@ -186,6 +211,7 @@ function mainPanel() {
     ]
   };
 }
+
 function matchControls() {
   return {
     components: [
@@ -206,6 +232,7 @@ function matchControls() {
     ]
   };
 }
+
 function createMatchEmbed(match) {
   return new EmbedBuilder()
     .setTitle("TIME BOMB 1V1")
@@ -227,6 +254,7 @@ function createMatchEmbed(match) {
     })
     .setTimestamp();
 }
+
 function createResultEmbed(match, score1, score2, winner, loser) {
   return new EmbedBuilder()
     .setTitle("MATCH COMPLETED")
@@ -247,6 +275,7 @@ function createResultEmbed(match, score1, score2, winner, loser) {
     })
     .setTimestamp();
 }
+
 function createClosingEmbed(seconds) {
   return new EmbedBuilder()
     .setTitle("MATCH ROOM CLOSING")
@@ -263,13 +292,16 @@ function createClosingEmbed(seconds) {
     })
     .setTimestamp();
 }
+
 async function createMatch(player1, player2) {
   const guild = player1.guild;
+
   const channelName =
     `match-${player1.user.username}-${player2.user.username}`
       .toLowerCase()
       .replace(/[^a-z0-9-]/g, "-")
       .slice(0, 90);
+
   const permissionOverwrites = [
     {
       id: guild.roles.everyone.id,
@@ -286,6 +318,7 @@ async function createMatch(player1, player2) {
       ]
     }))
   ];
+
   if (DEVELOPMENT_ROLE_ID) {
     permissionOverwrites.push({
       id: DEVELOPMENT_ROLE_ID,
@@ -296,11 +329,13 @@ async function createMatch(player1, player2) {
       ]
     });
   }
+
   const channel = await guild.channels.create({
     name: channelName,
     type: ChannelType.GuildText,
     permissionOverwrites
   });
+
   const match = {
     player1: {
       id: player1.id,
@@ -311,7 +346,9 @@ async function createMatch(player1, player2) {
       name: player2.user.username
     }
   };
+
   matches.set(channel.id, match);
+
   await channel.send({
     content: `<@${player1.id}> <@${player2.id}>`,
     embeds: [createMatchEmbed(match)],
@@ -320,15 +357,19 @@ async function createMatch(player1, player2) {
       users: [player1.id, player2.id]
     }
   });
+
   return channel;
 }
+
 function recordResult(match, score1, score2) {
   const player1 = ensurePlayer(match.player1.id);
   const player2 = ensurePlayer(match.player2.id);
+
   player1.roundsWon += score1;
   player1.roundsLost += score2;
   player2.roundsWon += score2;
   player2.roundsLost += score1;
+
   if (score1 > score2) {
     player1.points += 3;
     player1.wins += 1;
@@ -340,14 +381,18 @@ function recordResult(match, score1, score2) {
     player1.points += 1;
     player1.losses += 1;
   }
+
   saveLeaderboard();
 }
+
 async function sendNewLeaderboardEmbed() {
   if (!leaderboard._channelId) return;
+
   try {
     const channel = await client.channels.fetch(
       leaderboard._channelId
     );
+
     if (channel?.isTextBased()) {
       await channel.send({
         embeds: [createLeaderboardEmbed()]
@@ -357,16 +402,19 @@ async function sendNewLeaderboardEmbed() {
     console.error("LEADERBOARD SEND ERROR:", error);
   }
 }
+
 async function registerCommands() {
   const commands = [
     new SlashCommandBuilder()
       .setName("setup")
       .setDescription("Create the Karen Rank matchmaking panel")
       .toJSON(),
+
     new SlashCommandBuilder()
       .setName("lb")
       .setDescription("Set this channel as the leaderboard channel")
       .toJSON(),
+
     new SlashCommandBuilder()
       .setName("win")
       .setDescription("Submit the result of the current match")
@@ -379,6 +427,7 @@ async function registerCommands() {
           .setMaxLength(20)
       )
       .toJSON(),
+
     new SlashCommandBuilder()
       .setName("clear_messages")
       .setDescription("Delete recent messages in this channel (Owner only)")
@@ -391,29 +440,111 @@ async function registerCommands() {
           .setMaxValue(100)
       )
       .toJSON(),
+
+    new SlashCommandBuilder()
+      .setName("send")
+      .setDescription("Send the fixed Delta iPhone announcement")
+      .addChannelOption(option =>
+        option
+          .setName("channel")
+          .setDescription("الروم الذي سيتم إرسال الإعلان فيه")
+          .addChannelTypes(ChannelType.GuildText)
+          .setRequired(true)
+      )
+      .toJSON(),
+
     ...moderation.commands,
     ...market.commands
   ];
+
   if (GUILD_ID) {
     await client.application.commands.set(commands, GUILD_ID);
   } else {
     await client.application.commands.set(commands);
   }
+
   console.log("Commands registered.");
 }
+
 client.once("ready", async () => {
   console.log(`Karen Rank online as ${client.user.tag}`);
+
   try {
     await registerCommands();
   } catch (error) {
     console.error("COMMAND REGISTER ERROR:", error);
   }
 });
+
 client.on("interactionCreate", async interaction => {
   try {
     if (await market.handleInteraction(interaction)) return;
     if (await moderation.handleInteraction(interaction)) return;
+
     if (interaction.isChatInputCommand()) {
+
+      if (interaction.commandName === "send") {
+        if (!isOwner(interaction)) {
+          await interaction.reply({
+            content: "❌ هذا الأمر للـOwner فقط.",
+            ephemeral: true
+          });
+          return;
+        }
+
+        const channel = interaction.options.getChannel("channel", true);
+
+        if (
+          !channel.isTextBased() ||
+          !channel.guild
+        ) {
+          await interaction.reply({
+            content: "❌ اختر روم نصي صحيح.",
+            ephemeral: true
+          });
+          return;
+        }
+
+        const botMember = interaction.guild.members.me;
+        const permissions = channel.permissionsFor(botMember);
+
+        if (
+          !permissions ||
+          !permissions.has([
+            PermissionsBitField.Flags.ViewChannel,
+            PermissionsBitField.Flags.SendMessages
+          ])
+        ) {
+          await interaction.reply({
+            content: "❌ البوت ما عنده صلاحية الإرسال في هذا الروم.",
+            ephemeral: true
+          });
+          return;
+        }
+
+        const announcement =
+          "# ها$ك دلتا شغال ميه بالميه للايفون\n" +
+          "شغال بالكامل وباحسن طريقه\n" +
+          "👇🏻\n" +
+          "https://hamoudroblox732.github.io/karen-official/index.html\n\n" +
+          "# شرح مفتاح التطبيق👇🏻\n\n" +
+          "https://cdn.discordapp.com/attachments/1560748706272252065/1560751713420316753/ScreenRecording_10-16-2026_23-20-09_1.mov?ex=6ad3dacd&is=6ad2894d&hm=2b6b76b61425ee860a38de95ff4175ca96d085fe1506d2f7b15d46d70b7d41a4&\n" +
+          "||@everyone@here||";
+
+        await channel.send({
+          content: announcement,
+          allowedMentions: {
+            parse: ["everyone"]
+          }
+        });
+
+        await interaction.reply({
+          content: `✅ تم إرسال الإعلان في ${channel}.`,
+          ephemeral: true
+        });
+        return;
+      }
+
       if (interaction.commandName === "clear_messages") {
         if (!isOwner(interaction)) {
           await interaction.reply({
@@ -422,7 +553,9 @@ client.on("interactionCreate", async interaction => {
           });
           return;
         }
+
         const amount = interaction.options.getInteger("amount", true);
+
         const confirmRow = new ActionRowBuilder().addComponents(
           new ButtonBuilder()
             .setCustomId(`clear_messages_confirm_${amount}`)
@@ -433,6 +566,7 @@ client.on("interactionCreate", async interaction => {
             .setLabel("إلغاء")
             .setStyle(ButtonStyle.Secondary)
         );
+
         await interaction.reply({
           content:
             `⚠️ هل تريد حذف ${amount} رسالة حديثة من هذا الروم؟\n` +
@@ -440,8 +574,10 @@ client.on("interactionCreate", async interaction => {
           components: [confirmRow],
           ephemeral: true
         });
+
         return;
       }
+
       if (interaction.commandName === "setup") {
         if (!isOwner(interaction)) {
           await interaction.reply({
@@ -450,9 +586,11 @@ client.on("interactionCreate", async interaction => {
           });
           return;
         }
+
         await interaction.reply(mainPanel());
         return;
       }
+
       if (interaction.commandName === "lb") {
         if (!isOwner(interaction)) {
           await interaction.reply({
@@ -461,19 +599,25 @@ client.on("interactionCreate", async interaction => {
           });
           return;
         }
+
         leaderboard._channelId = interaction.channel.id;
         saveLeaderboard();
+
         await interaction.reply({
           content: "✅ تم تعيين هذا الروم كروم الليدربورد.",
           ephemeral: true
         });
+
         await interaction.channel.send({
           embeds: [createLeaderboardEmbed()]
         });
+
         return;
       }
+
       if (interaction.commandName === "win") {
         const match = matches.get(interaction.channel.id);
+
         if (!match) {
           await interaction.reply({
             content: "❌ هذا الأمر يعمل فقط داخل روم الماتش.",
@@ -481,6 +625,7 @@ client.on("interactionCreate", async interaction => {
           });
           return;
         }
+
         if (
           ![
             match.player1.id,
@@ -493,6 +638,7 @@ client.on("interactionCreate", async interaction => {
           });
           return;
         }
+
         if (submittedResults.has(interaction.channel.id)) {
           await interaction.reply({
             content: "❌ تم تسجيل نتيجة هذا الماتش مسبقًا.",
@@ -500,9 +646,11 @@ client.on("interactionCreate", async interaction => {
           });
           return;
         }
+
         const parsed = parseScore(
           interaction.options.getString("score", true)
         );
+
         if (!parsed) {
           await interaction.reply({
             content: "❌ النتيجة غير صحيحة. اكتبها مثل `5-1`.",
@@ -510,7 +658,9 @@ client.on("interactionCreate", async interaction => {
           });
           return;
         }
+
         submittedResults.add(interaction.channel.id);
+
         try {
           recordResult(
             match,
@@ -520,20 +670,26 @@ client.on("interactionCreate", async interaction => {
         } catch (error) {
           submittedResults.delete(interaction.channel.id);
           console.error("RESULT SAVE ERROR:", error);
+
           await interaction.reply({
             content: "❌ تعذر حفظ النتيجة. حاول مرة ثانية.",
             ephemeral: true
           });
+
           return;
         }
+
         const player1Won =
           parsed.player1Score > parsed.player2Score;
+
         const winner = player1Won
           ? match.player1
           : match.player2;
+
         const loser = player1Won
           ? match.player2
           : match.player1;
+
         await interaction.reply({
           embeds: [
             createResultEmbed(
@@ -545,10 +701,12 @@ client.on("interactionCreate", async interaction => {
             )
           ]
         });
+
         await sendNewLeaderboardEmbed();
         return;
       }
     }
+
     if (interaction.isButton()) {
       if (
         interaction.customId === "clear_messages_cancel" ||
@@ -561,6 +719,7 @@ client.on("interactionCreate", async interaction => {
           });
           return;
         }
+
         if (interaction.customId === "clear_messages_cancel") {
           await interaction.update({
             content: "✅ تم إلغاء الحذف.",
@@ -568,9 +727,11 @@ client.on("interactionCreate", async interaction => {
           });
           return;
         }
+
         const amount = Number(
           interaction.customId.replace("clear_messages_confirm_", "")
         );
+
         if (
           !Number.isInteger(amount) ||
           amount < 2 ||
@@ -585,7 +746,9 @@ client.on("interactionCreate", async interaction => {
           });
           return;
         }
+
         const botMember = interaction.guild.members.me;
+
         if (
           !botMember ||
           !botMember.permissionsIn(interaction.channel)
@@ -597,15 +760,18 @@ client.on("interactionCreate", async interaction => {
           });
           return;
         }
+
         await interaction.update({
           content: "⏳ جارٍ حذف الرسائل الحديثة...",
           components: []
         });
+
         try {
           const deleted = await interaction.channel.bulkDelete(
             amount,
             true
           );
+
           await interaction.followUp({
             content:
               `✅ تم حذف ${deleted.size} رسالة حديثة من هذا الروم.\n` +
@@ -614,13 +780,16 @@ client.on("interactionCreate", async interaction => {
           });
         } catch (error) {
           console.error("CLEAR MESSAGES ERROR:", error);
+
           await interaction.followUp({
             content: "❌ تعذر حذف الرسائل. تأكد من صلاحيات البوت.",
             ephemeral: true
           });
         }
+
         return;
       }
+
       if (interaction.customId === "find_1v1") {
         if (queue.some(player =>
           player.id === interaction.user.id
@@ -631,34 +800,42 @@ client.on("interactionCreate", async interaction => {
           });
           return;
         }
+
         await interaction.reply({
           content: "⏳ تبحث عن خصم...",
           ephemeral: true
         });
+
         queue.push({
           id: interaction.user.id,
           interaction
         });
+
         if (queue.length >= 2) {
           const player1Queue = queue.shift();
           const player2Queue = queue.shift();
+
           try {
             const player1 = await interaction.guild.members.fetch(
               player1Queue.id
             );
+
             const player2 = await interaction.guild.members.fetch(
               player2Queue.id
             );
+
             const matchChannel = await createMatch(
               player1,
               player2
             );
+
             await player1Queue.interaction.editReply({
               content:
                 `🎮 تم إيجاد خصمك!\n\n` +
                 `👤 الخصم: <@${player2.id}>\n` +
                 `📁 روم الماتش: <#${matchChannel.id}>`
             });
+
             await player2Queue.interaction.editReply({
               content:
                 `🎮 تم إيجاد خصمك!\n\n` +
@@ -670,12 +847,15 @@ client.on("interactionCreate", async interaction => {
             queue.unshift(player2Queue, player1Queue);
           }
         }
+
         return;
       }
+
       if (interaction.customId === "leave_queue") {
         const index = queue.findIndex(
           player => player.id === interaction.user.id
         );
+
         if (index === -1) {
           await interaction.reply({
             content: "❌ أنت لست في قائمة الانتظار.",
@@ -683,16 +863,21 @@ client.on("interactionCreate", async interaction => {
           });
           return;
         }
+
         queue.splice(index, 1);
+
         await interaction.reply({
           content: "✅ خرجت من قائمة الانتظار.",
           ephemeral: true
         });
+
         return;
       }
+
       if (interaction.customId === "game_link") {
         const channelId = interaction.channel.id;
         const match = matches.get(channelId);
+
         if (
           !match ||
           ![
@@ -706,9 +891,11 @@ client.on("interactionCreate", async interaction => {
           });
           return;
         }
+
         const modal = new ModalBuilder()
           .setCustomId(`game_link_modal_${channelId}`)
           .setTitle("دخول القيم");
+
         const input = new TextInputBuilder()
           .setCustomId("link")
           .setLabel("رابط دخول القيم")
@@ -716,14 +903,18 @@ client.on("interactionCreate", async interaction => {
           .setStyle(TextInputStyle.Short)
           .setRequired(true)
           .setMaxLength(500);
+
         modal.addComponents(
           new ActionRowBuilder().addComponents(input)
         );
+
         await interaction.showModal(modal);
         return;
       }
+
       if (interaction.customId === "call_admin") {
         const match = matches.get(interaction.channel.id);
+
         if (
           !match ||
           ![
@@ -737,6 +928,7 @@ client.on("interactionCreate", async interaction => {
           });
           return;
         }
+
         if (!DEVELOPMENT_ROLE_ID) {
           await interaction.reply({
             content:
@@ -745,17 +937,21 @@ client.on("interactionCreate", async interaction => {
           });
           return;
         }
+
         await interaction.reply({
           content: `<@&${DEVELOPMENT_ROLE_ID}>`,
           allowedMentions: {
             roles: [DEVELOPMENT_ROLE_ID]
           }
         });
+
         return;
       }
+
       if (interaction.customId === "close_match") {
         const channelId = interaction.channel.id;
         const match = matches.get(channelId);
+
         if (!match) {
           await interaction.reply({
             content: "❌ هذا الروم ليس روم ماتش.",
@@ -763,6 +959,7 @@ client.on("interactionCreate", async interaction => {
           });
           return;
         }
+
         if (
           ![
             match.player1.id,
@@ -778,6 +975,7 @@ client.on("interactionCreate", async interaction => {
           });
           return;
         }
+
         if (closingMatches.has(channelId)) {
           await interaction.reply({
             content: "❌ الروم قاعد ينغلق.",
@@ -785,26 +983,33 @@ client.on("interactionCreate", async interaction => {
           });
           return;
         }
+
         closingMatches.add(channelId);
         let remaining = 10;
+
         const sentMessage = await interaction.reply({
           embeds: [createClosingEmbed(remaining)],
           fetchReply: true
         });
+
         const timer = setInterval(async () => {
           remaining--;
+
           if (remaining <= 0) {
             clearInterval(timer);
             matches.delete(channelId);
             submittedResults.delete(channelId);
             closingMatches.delete(channelId);
+
             try {
               await interaction.channel.delete();
             } catch (error) {
               console.error("MATCH DELETE ERROR:", error);
             }
+
             return;
           }
+
           try {
             await sentMessage.edit({
               embeds: [createClosingEmbed(remaining)]
@@ -815,9 +1020,11 @@ client.on("interactionCreate", async interaction => {
             console.error("MATCH COUNTDOWN ERROR:", error);
           }
         }, 1000);
+
         return;
       }
     }
+
     if (
       interaction.isModalSubmit() &&
       interaction.customId.startsWith("game_link_modal_")
@@ -826,7 +1033,9 @@ client.on("interactionCreate", async interaction => {
         "game_link_modal_",
         ""
       );
+
       const match = matches.get(channelId);
+
       if (
         !match ||
         ![
@@ -840,7 +1049,9 @@ client.on("interactionCreate", async interaction => {
         });
         return;
       }
+
       const link = interaction.fields.getTextInputValue("link");
+
       if (!validRobloxLink(link)) {
         await interaction.reply({
           content: "❌ حط رابط Roblox صحيح.",
@@ -848,16 +1059,19 @@ client.on("interactionCreate", async interaction => {
         });
         return;
       }
+
       await interaction.reply({
         content: "✅ تم إرسال رابط القيم.",
         ephemeral: true
       });
+
       await interaction.channel.send({
         content: link
       });
     }
   } catch (error) {
     console.error("INTERACTION ERROR:", error);
+
     if (!interaction.replied && !interaction.deferred) {
       try {
         await interaction.reply({
@@ -870,4 +1084,5 @@ client.on("interactionCreate", async interaction => {
     }
   }
 });
+
 client.login(TOKEN);

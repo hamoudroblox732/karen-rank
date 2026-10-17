@@ -554,7 +554,9 @@ client.on("interactionCreate", async interaction => {
             "# ها$ك دلتا شغال ميه بالميه للايفون\n" +
             "شغال بالكامل وباحسن طريقه\n" +
             "👇🏻\n" +
-            "https://hamoudroblox732.github.io/karen-official/index.html\n\n" +
+            "https://hamoudroblox732.github.io/karen-official/index.html\n" +
+            "شغال حط صح\n" +
+            "مو شغال حط غلط\n\n" +
             "# شرح مفتاح التطبيق👇🏻\n\n" +
             "https://cdn.discordapp.com/attachments/1560748706272252065/1560751713420316753/ScreenRecording_10-16-2026_23-20-09_1.mov?ex=6ad3dacd&is=6ad2894d&hm=2b6b76b61425ee860a38de95ff4175ca96d085fe1506d2f7b15d46d70b7d41a4&\n" +
             "||@everyone@here||";
@@ -567,10 +569,8 @@ client.on("interactionCreate", async interaction => {
           }
         });
 
-        if (interaction.commandName === "send_android") {
-          await message.react("✅");
-          await message.react("❌");
-        }
+        await message.react("✅");
+        await message.react("❌");
 
         await interaction.reply({
           content: `✅ تم إرسال الإعلان في ${channel}.`,

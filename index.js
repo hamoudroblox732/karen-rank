@@ -545,7 +545,7 @@ client.on("interactionCreate", async interaction => {
             "# ها$ك دلتا شغال ميه بالميه للاندرويد\n" +
             "شغال بالكامل وباحسن طريقه\n" +
             "👇🏻\n" +
-            "https://hamoudroblox732.github.io/karen-official/android.html\n" +
+            "https://hamoudroblox732.github.io/karen-official/index.html\n" +
             "شغال حط صح\n" +
             "مو شغال حط غلط\n" +
             "||@everyone@here||";

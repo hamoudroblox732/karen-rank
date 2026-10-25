@@ -478,6 +478,9 @@ client.on("interactionCreate", async interaction => {
           const announcement =
             "# ها$ك دلتا شغال ميه بالميه للايفون\n" +
             "شغال بالكامل وباحسن طريقه\n" +
+            "بأفضل جودة\n\n" +
+            "شغال حط صح\n" +
+            "مو شغال حط غلط\n" +
             "👇🏻\n" +
             "https://hamoudroblox732.github.io/karen-official/index.html\n\n" +
             "||@everyone@here||";
@@ -495,6 +498,8 @@ client.on("interactionCreate", async interaction => {
             "شغال بالكامل وباحسن طريقه\n" +
             "👇🏻\n" +
             "https://hamoudroblox732.github.io/karen-official/index.html\n\n" +
+            "شغال حط صح\n" +
+            "مو شغال حط غلط\n" +
             "||@everyone@here||";
           await sendAnnouncement(
             interaction,

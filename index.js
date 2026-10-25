@@ -485,7 +485,7 @@ client.on("interactionCreate", async interaction => {
             interaction,
             channel,
             announcement,
-            ["🟩", "🟥"]
+            ["✅", "❌"]
           );
           return;
         }

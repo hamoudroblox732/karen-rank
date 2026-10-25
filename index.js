@@ -393,13 +393,34 @@ async function registerCommands() {
       .toJSON(),
     new SlashCommandBuilder()
       .setName("send")
-      .setDescription("Send the fixed iPhone announcement")
+      .setDescription("Send a custom announcement (Owner only)")
+      .addStringOption(option =>
+        option
+          .setName("message")
+          .setDescription("اكتب الرسالة التي تريد إرسالها")
+          .setRequired(true)
+          .setMaxLength(2000)
+      )
       .addChannelOption(option =>
         option
           .setName("channel")
-          .setDescription("اختر روم الإعلان")
+          .setDescription("اختر الروم الذي تريد الإرسال فيه")
           .addChannelTypes(ChannelType.GuildText)
           .setRequired(true)
+      )
+      .addStringOption(option =>
+        option
+          .setName("reaction1")
+          .setDescription("الإيموجي الأول (اختياري)")
+          .setRequired(false)
+          .setMaxLength(100)
+      )
+      .addStringOption(option =>
+        option
+          .setName("reaction2")
+          .setDescription("الإيموجي الثاني (اختياري)")
+          .setRequired(false)
+          .setMaxLength(100)
       )
       .toJSON(),
     new SlashCommandBuilder()
@@ -474,6 +495,8 @@ client.on("interactionCreate", async interaction => {
           return;
         }
         let announcement;
+        let reaction1 = null;
+        let reaction2 = null;
         if (interaction.commandName === "send_android") {
           announcement =
             "# ها$ك دلتا شغال ميه بالميه للاندرويد\n" +
@@ -484,27 +507,53 @@ client.on("interactionCreate", async interaction => {
             "مو شغال حط غلط\n" +
             "||@everyone@here||";
         } else {
-          announcement =
-            "# ها$ك دلتا شغال ميه بالميه للايفون\n" +
-            "شغال بالكامل وباحسن طريقه\n" +
-            "👇🏻\n" +
-            "https://hamoudroblox732.github.io/karen-official/index.html\n" +
-            "شغال حط صح\n" +
-            "مو شغال حط غلط\n" +
-            "||@everyone@here||";
+          announcement = interaction.options.getString("message", true);
+          reaction1 = interaction.options.getString("reaction1");
+          reaction2 = interaction.options.getString("reaction2");
         }
-        const message = await channel.send({
-          content: announcement,
-          allowedMentions: {
-            parse: ["everyone"]
-          }
-        });
-        await message.react("✅");
-        await message.react("❌");
-        await interaction.reply({
-          content: `✅ تم إرسال الإعلان في ${channel}.`,
+        await interaction.deferReply({
           ephemeral: true
         });
+        try {
+          const message = await channel.send({
+            content: announcement,
+            allowedMentions: {
+              parse: ["everyone"]
+            }
+          });
+          const failedReactions = [];
+          if (reaction1) {
+            try {
+              await message.react(reaction1);
+            } catch (error) {
+              console.error("REACTION 1 ERROR:", error);
+              failedReactions.push(reaction1);
+            }
+          }
+          if (reaction2) {
+            try {
+              await message.react(reaction2);
+            } catch (error) {
+              console.error("REACTION 2 ERROR:", error);
+              failedReactions.push(reaction2);
+            }
+          }
+          let reply =
+            `✅ تم إرسال الرسالة بنجاح في ${channel}.`;
+          if (failedReactions.length > 0) {
+            reply +=
+              "\n⚠️ تم إرسال الرسالة، لكن تعذرت إضافة بعض الرياكشنات: " +
+              failedReactions.join(" ");
+          }
+          await interaction.editReply({
+            content: reply
+          });
+        } catch (error) {
+          console.error("SEND ANNOUNCEMENT ERROR:", error);
+          await interaction.editReply({
+            content: "❌ تعذر إرسال الرسالة. تأكد من صلاحيات البوت."
+          });
+        }
         return;
       }
       if (interaction.commandName === "clear_messages") {

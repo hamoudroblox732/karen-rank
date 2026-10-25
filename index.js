@@ -19,9 +19,7 @@ const market = require("./market.js");
 const TOKEN = process.env.TOKEN;
 const GUILD_ID = process.env.GUILD_ID;
 const DEVELOPMENT_ROLE_ID = process.env.DEVELOPMENT_ROLE_ID;
-if (!TOKEN) {
-  throw new Error("Missing TOKEN environment variable.");
-}
+if (!TOKEN) throw new Error("Missing TOKEN environment variable.");
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -39,19 +37,14 @@ const leaderboardFile = "./leaderboard.json";
 let leaderboard = {};
 if (fs.existsSync(leaderboardFile)) {
   try {
-    leaderboard = JSON.parse(
-      fs.readFileSync(leaderboardFile, "utf8")
-    );
+    leaderboard = JSON.parse(fs.readFileSync(leaderboardFile, "utf8"));
   } catch (error) {
     console.error("LEADERBOARD LOAD ERROR:", error);
     leaderboard = {};
   }
 }
 function saveLeaderboard() {
-  fs.writeFileSync(
-    leaderboardFile,
-    JSON.stringify(leaderboard, null, 2)
-  );
+  fs.writeFileSync(leaderboardFile, JSON.stringify(leaderboard, null, 2));
 }
 function isOwner(interaction) {
   return Boolean(
@@ -62,13 +55,8 @@ function isOwner(interaction) {
 function validRobloxLink(link) {
   try {
     const url = new URL(link);
-    return (
-      url.protocol === "https:" &&
-      (
-        url.hostname === "roblox.com" ||
-        url.hostname.endsWith(".roblox.com")
-      )
-    );
+    return url.protocol === "https:" &&
+      (url.hostname === "roblox.com" || url.hostname.endsWith(".roblox.com"));
   } catch {
     return false;
   }
@@ -82,13 +70,8 @@ function parseScore(input) {
     !Number.isSafeInteger(player1Score) ||
     !Number.isSafeInteger(player2Score) ||
     player1Score === player2Score
-  ) {
-    return null;
-  }
-  return {
-    player1Score,
-    player2Score
-  };
+  ) return null;
+  return { player1Score, player2Score };
 }
 function ensurePlayer(userId) {
   if (!leaderboard[userId]) {
@@ -128,25 +111,18 @@ function createLeaderboardEmbed() {
   const description = sorted.length === 0
     ? "## No Results Yet\n\nNo matches have been completed yet."
     : sorted.slice(0, 25).map(([userId, data], index) => {
-        const position =
-          ["🥇", "🥈", "🥉"][index] || `**${index + 1}.**`;
+        const position = ["🥇", "🥈", "🥉"][index] || `**${index + 1}.**`;
         return (
           `${position} <@${userId}>\n` +
-          `> **${data.points}** Points • **${data.wins}** Wins • ` +
-          `**${data.losses}** Losses\n` +
-          `> **${data.roundsWon}** Rounds Won • ` +
-          `**${data.roundsLost}** Rounds Lost`
+          `> **${data.points}** Points • **${data.wins}** Wins • **${data.losses}** Losses\n` +
+          `> **${data.roundsWon}** Rounds Won • **${data.roundsLost}** Rounds Lost`
         );
       }).join("\n\n");
   return new EmbedBuilder()
     .setTitle("KAREN RANK")
-    .setDescription(
-      "### TIME BOMB 1V1 LEADERBOARD\n\n" + description
-    )
+    .setDescription("### TIME BOMB 1V1 LEADERBOARD\n\n" + description)
     .setColor(0x5865f2)
-    .setFooter({
-      text: "Karen Rank • Time Bomb 1V1"
-    })
+    .setFooter({ text: "Karen Rank • Time Bomb 1V1" })
     .setTimestamp();
 }
 function createWaitingEmbed() {
@@ -164,9 +140,7 @@ function createWaitingEmbed() {
       "🏆 **Ranked Results**"
     )
     .setColor(0x5865f2)
-    .setFooter({
-      text: "Karen Rank • Time Bomb 1V1"
-    })
+    .setFooter({ text: "Karen Rank • Time Bomb 1V1" })
     .setTimestamp();
 }
 function mainPanel() {
@@ -222,9 +196,7 @@ function createMatchEmbed(match) {
       "⚠️ اكتب النتيجة بترتيب Player 1 ثم Player 2."
     )
     .setColor(0x5865f2)
-    .setFooter({
-      text: "Karen Rank • Match Room"
-    })
+    .setFooter({ text: "Karen Rank • Match Room" })
     .setTimestamp();
 }
 function createResultEmbed(match, score1, score2, winner, loser) {
@@ -242,9 +214,7 @@ function createResultEmbed(match, score1, score2, winner, loser) {
       `🎯 <@${loser.id}> **+1 Point**`
     )
     .setColor(0x57f287)
-    .setFooter({
-      text: "Karen Rank • Result Recorded"
-    })
+    .setFooter({ text: "Karen Rank • Result Recorded" })
     .setTimestamp();
 }
 function createClosingEmbed(seconds) {
@@ -258,9 +228,7 @@ function createClosingEmbed(seconds) {
       "سيتم حذف روم الماتش تلقائيًا."
     )
     .setColor(0xed4245)
-    .setFooter({
-      text: "Karen Rank • Match Room"
-    })
+    .setFooter({ text: "Karen Rank • Match Room" })
     .setTimestamp();
 }
 async function createMatch(player1, player2) {
@@ -273,9 +241,7 @@ async function createMatch(player1, player2) {
   const permissionOverwrites = [
     {
       id: guild.roles.everyone.id,
-      deny: [
-        PermissionsBitField.Flags.ViewChannel
-      ]
+      deny: [PermissionsBitField.Flags.ViewChannel]
     },
     ...[player1.id, player2.id].map(id => ({
       id,
@@ -302,23 +268,15 @@ async function createMatch(player1, player2) {
     permissionOverwrites
   });
   const match = {
-    player1: {
-      id: player1.id,
-      name: player1.user.username
-    },
-    player2: {
-      id: player2.id,
-      name: player2.user.username
-    }
+    player1: { id: player1.id, name: player1.user.username },
+    player2: { id: player2.id, name: player2.user.username }
   };
   matches.set(channel.id, match);
   await channel.send({
     content: `<@${player1.id}> <@${player2.id}>`,
     embeds: [createMatchEmbed(match)],
     ...matchControls(),
-    allowedMentions: {
-      users: [player1.id, player2.id]
-    }
+    allowedMentions: { users: [player1.id, player2.id] }
   });
   return channel;
 }
@@ -345,17 +303,45 @@ function recordResult(match, score1, score2) {
 async function sendNewLeaderboardEmbed() {
   if (!leaderboard._channelId) return;
   try {
-    const channel = await client.channels.fetch(
-      leaderboard._channelId
-    );
+    const channel = await client.channels.fetch(leaderboard._channelId);
     if (channel?.isTextBased()) {
-      await channel.send({
-        embeds: [createLeaderboardEmbed()]
-      });
+      await channel.send({ embeds: [createLeaderboardEmbed()] });
     }
   } catch (error) {
     console.error("LEADERBOARD SEND ERROR:", error);
   }
+}
+async function sendAnnouncement(interaction, channel, message, reactions) {
+  const botMember = interaction.guild.members.me;
+  const permissions = channel.permissionsFor(botMember);
+  if (
+    !permissions ||
+    !permissions.has([
+      PermissionsBitField.Flags.ViewChannel,
+      PermissionsBitField.Flags.SendMessages
+    ])
+  ) {
+    await interaction.reply({
+      content: "❌ البوت ما عنده صلاحية الإرسال في هذا الروم.",
+      ephemeral: true
+    });
+    return;
+  }
+  const sentMessage = await channel.send({
+    content: message,
+    allowedMentions: { parse: ["everyone"] }
+  });
+  for (const reaction of reactions) {
+    try {
+      await sentMessage.react(reaction);
+    } catch (error) {
+      console.error(`REACTION ERROR (${reaction}):`, error);
+    }
+  }
+  await interaction.reply({
+    content: `✅ تم إرسال الرسالة في ${channel}.`,
+    ephemeral: true
+  });
 }
 async function registerCommands() {
   const commands = [
@@ -393,45 +379,56 @@ async function registerCommands() {
       .toJSON(),
     new SlashCommandBuilder()
       .setName("send")
-      .setDescription("Send a custom announcement (Owner only)")
+      .setDescription("Send the fixed iPhone announcement")
+      .addChannelOption(option =>
+        option
+          .setName("channel")
+          .setDescription("الروم الذي سيتم إرسال الإعلان فيه")
+          .addChannelTypes(ChannelType.GuildText)
+          .setRequired(true)
+      )
+      .toJSON(),
+    new SlashCommandBuilder()
+      .setName("send_android")
+      .setDescription("Send the Android announcement")
+      .addChannelOption(option =>
+        option
+          .setName("channel")
+          .setDescription("الروم الذي سيتم إرسال الإعلان فيه")
+          .addChannelTypes(ChannelType.GuildText)
+          .setRequired(true)
+      )
+      .toJSON(),
+    new SlashCommandBuilder()
+      .setName("send_cus")
+      .setDescription("Send a custom message with reactions")
       .addStringOption(option =>
         option
           .setName("message")
-          .setDescription("اكتب الرسالة التي تريد إرسالها")
+          .setDescription("الرسالة التي تريد إرسالها")
           .setRequired(true)
           .setMaxLength(2000)
       )
       .addChannelOption(option =>
         option
           .setName("channel")
-          .setDescription("اختر الروم الذي تريد الإرسال فيه")
+          .setDescription("الروم الذي سيتم إرسال الرسالة فيه")
           .addChannelTypes(ChannelType.GuildText)
           .setRequired(true)
       )
       .addStringOption(option =>
         option
           .setName("reaction1")
-          .setDescription("الإيموجي الأول (اختياري)")
-          .setRequired(false)
+          .setDescription("الإيموجي الأول")
+          .setRequired(true)
           .setMaxLength(100)
       )
       .addStringOption(option =>
         option
           .setName("reaction2")
-          .setDescription("الإيموجي الثاني (اختياري)")
-          .setRequired(false)
-          .setMaxLength(100)
-      )
-      .toJSON(),
-    new SlashCommandBuilder()
-      .setName("send_android")
-      .setDescription("Send the fixed Android announcement")
-      .addChannelOption(option =>
-        option
-          .setName("channel")
-          .setDescription("اختر روم الإعلان")
-          .addChannelTypes(ChannelType.GuildText)
+          .setDescription("الإيموجي الثاني")
           .setRequired(true)
+          .setMaxLength(100)
       )
       .toJSON(),
     ...moderation.commands,
@@ -459,7 +456,8 @@ client.on("interactionCreate", async interaction => {
     if (interaction.isChatInputCommand()) {
       if (
         interaction.commandName === "send" ||
-        interaction.commandName === "send_android"
+        interaction.commandName === "send_android" ||
+        interaction.commandName === "send_cus"
       ) {
         if (!isOwner(interaction)) {
           await interaction.reply({
@@ -469,92 +467,55 @@ client.on("interactionCreate", async interaction => {
           return;
         }
         const channel = interaction.options.getChannel("channel", true);
-        if (
-          !channel.isTextBased() ||
-          !channel.guild
-        ) {
+        if (!channel.isTextBased() || !channel.guild) {
           await interaction.reply({
             content: "❌ اختر روم نصي صحيح.",
             ephemeral: true
           });
           return;
         }
-        const botMember = interaction.guild.members.me;
-        const permissions = channel.permissionsFor(botMember);
-        if (
-          !permissions ||
-          !permissions.has([
-            PermissionsBitField.Flags.ViewChannel,
-            PermissionsBitField.Flags.SendMessages
-          ])
-        ) {
-          await interaction.reply({
-            content: "❌ البوت ما عنده صلاحية الإرسال في هذا الروم.",
-            ephemeral: true
-          });
+        if (interaction.commandName === "send") {
+          const announcement =
+            "# ها$ك دلتا شغال ميه بالميه للايفون\n" +
+            "شغال بالكامل وباحسن طريقه\n" +
+            "👇🏻\n" +
+            "https://hamoudroblox732.github.io/karen-official/index.html\n\n" +
+            "||@everyone@here||";
+          await sendAnnouncement(
+            interaction,
+            channel,
+            announcement,
+            ["🟩", "🟥"]
+          );
           return;
         }
-        let announcement;
-        let reaction1 = null;
-        let reaction2 = null;
         if (interaction.commandName === "send_android") {
-          announcement =
+          const announcement =
             "# ها$ك دلتا شغال ميه بالميه للاندرويد\n" +
             "شغال بالكامل وباحسن طريقه\n" +
             "👇🏻\n" +
-            "https://hamoudroblox732.github.io/karen-official/index.html\n" +
-            "شغال حط صح\n" +
-            "مو شغال حط غلط\n" +
+            "https://hamoudroblox732.github.io/karen-official/index.html\n\n" +
             "||@everyone@here||";
-        } else {
-          announcement = interaction.options.getString("message", true);
-          reaction1 = interaction.options.getString("reaction1");
-          reaction2 = interaction.options.getString("reaction2");
+          await sendAnnouncement(
+            interaction,
+            channel,
+            announcement,
+            ["✅", "❌"]
+          );
+          return;
         }
-        await interaction.deferReply({
-          ephemeral: true
-        });
-        try {
-          const message = await channel.send({
-            content: announcement,
-            allowedMentions: {
-              parse: ["everyone"]
-            }
-          });
-          const failedReactions = [];
-          if (reaction1) {
-            try {
-              await message.react(reaction1);
-            } catch (error) {
-              console.error("REACTION 1 ERROR:", error);
-              failedReactions.push(reaction1);
-            }
-          }
-          if (reaction2) {
-            try {
-              await message.react(reaction2);
-            } catch (error) {
-              console.error("REACTION 2 ERROR:", error);
-              failedReactions.push(reaction2);
-            }
-          }
-          let reply =
-            `✅ تم إرسال الرسالة بنجاح في ${channel}.`;
-          if (failedReactions.length > 0) {
-            reply +=
-              "\n⚠️ تم إرسال الرسالة، لكن تعذرت إضافة بعض الرياكشنات: " +
-              failedReactions.join(" ");
-          }
-          await interaction.editReply({
-            content: reply
-          });
-        } catch (error) {
-          console.error("SEND ANNOUNCEMENT ERROR:", error);
-          await interaction.editReply({
-            content: "❌ تعذر إرسال الرسالة. تأكد من صلاحيات البوت."
-          });
+        if (interaction.commandName === "send_cus") {
+          const message = interaction.options.getString("message", true);
+          const reaction1 = interaction.options.getString("reaction1", true);
+          const reaction2 = interaction.options.getString("reaction2", true);
+          await sendAnnouncement(
+            interaction,
+            channel,
+            message,
+            [reaction1, reaction2]
+          );
+          return;
         }
-        return;
       }
       if (interaction.commandName === "clear_messages") {
         if (!isOwner(interaction)) {
@@ -623,12 +584,7 @@ client.on("interactionCreate", async interaction => {
           });
           return;
         }
-        if (
-          ![
-            match.player1.id,
-            match.player2.id
-          ].includes(interaction.user.id)
-        ) {
+        if (![match.player1.id, match.player2.id].includes(interaction.user.id)) {
           await interaction.reply({
             content: "❌ فقط لاعبي الماتش يقدرون يسجلون النتيجة.",
             ephemeral: true
@@ -642,9 +598,7 @@ client.on("interactionCreate", async interaction => {
           });
           return;
         }
-        const parsed = parseScore(
-          interaction.options.getString("score", true)
-        );
+        const parsed = parseScore(interaction.options.getString("score", true));
         if (!parsed) {
           await interaction.reply({
             content: "❌ النتيجة غير صحيحة. اكتبها مثل `5-1`.",
@@ -654,11 +608,7 @@ client.on("interactionCreate", async interaction => {
         }
         submittedResults.add(interaction.channel.id);
         try {
-          recordResult(
-            match,
-            parsed.player1Score,
-            parsed.player2Score
-          );
+          recordResult(match, parsed.player1Score, parsed.player2Score);
         } catch (error) {
           submittedResults.delete(interaction.channel.id);
           console.error("RESULT SAVE ERROR:", error);
@@ -668,14 +618,9 @@ client.on("interactionCreate", async interaction => {
           });
           return;
         }
-        const player1Won =
-          parsed.player1Score > parsed.player2Score;
-        const winner = player1Won
-          ? match.player1
-          : match.player2;
-        const loser = player1Won
-          ? match.player2
-          : match.player1;
+        const player1Won = parsed.player1Score > parsed.player2Score;
+        const winner = player1Won ? match.player1 : match.player2;
+        const loser = player1Won ? match.player2 : match.player1;
         await interaction.reply({
           embeds: [
             createResultEmbed(
@@ -744,10 +689,7 @@ client.on("interactionCreate", async interaction => {
           components: []
         });
         try {
-          const deleted = await interaction.channel.bulkDelete(
-            amount,
-            true
-          );
+          const deleted = await interaction.channel.bulkDelete(amount, true);
           await interaction.followUp({
             content:
               `✅ تم حذف ${deleted.size} رسالة حديثة من هذا الروم.\n` +
@@ -764,9 +706,7 @@ client.on("interactionCreate", async interaction => {
         return;
       }
       if (interaction.customId === "find_1v1") {
-        if (queue.some(player =>
-          player.id === interaction.user.id
-        )) {
+        if (queue.some(player => player.id === interaction.user.id)) {
           await interaction.reply({
             content: "❌ أنت موجود أصلًا في قائمة الانتظار.",
             ephemeral: true
@@ -785,16 +725,9 @@ client.on("interactionCreate", async interaction => {
           const player1Queue = queue.shift();
           const player2Queue = queue.shift();
           try {
-            const player1 = await interaction.guild.members.fetch(
-              player1Queue.id
-            );
-            const player2 = await interaction.guild.members.fetch(
-              player2Queue.id
-            );
-            const matchChannel = await createMatch(
-              player1,
-              player2
-            );
+            const player1 = await interaction.guild.members.fetch(player1Queue.id);
+            const player2 = await interaction.guild.members.fetch(player2Queue.id);
+            const matchChannel = await createMatch(player1, player2);
             await player1Queue.interaction.editReply({
               content:
                 `🎮 تم إيجاد خصمك!\n\n` +
@@ -815,9 +748,7 @@ client.on("interactionCreate", async interaction => {
         return;
       }
       if (interaction.customId === "leave_queue") {
-        const index = queue.findIndex(
-          player => player.id === interaction.user.id
-        );
+        const index = queue.findIndex(player => player.id === interaction.user.id);
         if (index === -1) {
           await interaction.reply({
             content: "❌ أنت لست في قائمة الانتظار.",
@@ -835,13 +766,7 @@ client.on("interactionCreate", async interaction => {
       if (interaction.customId === "game_link") {
         const channelId = interaction.channel.id;
         const match = matches.get(channelId);
-        if (
-          !match ||
-          ![
-            match.player1.id,
-            match.player2.id
-          ].includes(interaction.user.id)
-        ) {
+        if (!match || ![match.player1.id, match.player2.id].includes(interaction.user.id)) {
           await interaction.reply({
             content: "❌ هذا الزر مخصص للاعبي الماتش.",
             ephemeral: true
@@ -866,13 +791,7 @@ client.on("interactionCreate", async interaction => {
       }
       if (interaction.customId === "call_admin") {
         const match = matches.get(interaction.channel.id);
-        if (
-          !match ||
-          ![
-            match.player1.id,
-            match.player2.id
-          ].includes(interaction.user.id)
-        ) {
+        if (!match || ![match.player1.id, match.player2.id].includes(interaction.user.id)) {
           await interaction.reply({
             content: "❌ هذا الزر مخصص للاعبي الماتش.",
             ephemeral: true
@@ -881,17 +800,14 @@ client.on("interactionCreate", async interaction => {
         }
         if (!DEVELOPMENT_ROLE_ID) {
           await interaction.reply({
-            content:
-              "❌ DEVELOPMENT_ROLE_ID غير مضبوط في إعدادات الاستضافة.",
+            content: "❌ DEVELOPMENT_ROLE_ID غير مضبوط في إعدادات الاستضافة.",
             ephemeral: true
           });
           return;
         }
         await interaction.reply({
           content: `<@&${DEVELOPMENT_ROLE_ID}>`,
-          allowedMentions: {
-            roles: [DEVELOPMENT_ROLE_ID]
-          }
+          allowedMentions: { roles: [DEVELOPMENT_ROLE_ID] }
         });
         return;
       }
@@ -906,13 +822,8 @@ client.on("interactionCreate", async interaction => {
           return;
         }
         if (
-          ![
-            match.player1.id,
-            match.player2.id
-          ].includes(interaction.user.id) &&
-          !interaction.memberPermissions?.has(
-            PermissionsBitField.Flags.Administrator
-          )
+          ![match.player1.id, match.player2.id].includes(interaction.user.id) &&
+          !interaction.memberPermissions?.has(PermissionsBitField.Flags.Administrator)
         ) {
           await interaction.reply({
             content: "❌ ما عندك صلاحية إغلاق هذا الماتش.",
@@ -964,18 +875,9 @@ client.on("interactionCreate", async interaction => {
       interaction.isModalSubmit() &&
       interaction.customId.startsWith("game_link_modal_")
     ) {
-      const channelId = interaction.customId.replace(
-        "game_link_modal_",
-        ""
-      );
+      const channelId = interaction.customId.replace("game_link_modal_", "");
       const match = matches.get(channelId);
-      if (
-        !match ||
-        ![
-          match.player1.id,
-          match.player2.id
-        ].includes(interaction.user.id)
-      ) {
+      if (!match || ![match.player1.id, match.player2.id].includes(interaction.user.id)) {
         await interaction.reply({
           content: "❌ الماتش غير موجود أو ليس لك.",
           ephemeral: true
@@ -994,9 +896,7 @@ client.on("interactionCreate", async interaction => {
         content: "✅ تم إرسال رابط القيم.",
         ephemeral: true
       });
-      await interaction.channel.send({
-        content: link
-      });
+      await interaction.channel.send({ content: link });
     }
   } catch (error) {
     console.error("INTERACTION ERROR:", error);
